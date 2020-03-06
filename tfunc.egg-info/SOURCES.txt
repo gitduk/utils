@@ -1,7 +1,0 @@
-setup.py
-tfunc.egg-info/PKG-INFO
-tfunc.egg-info/SOURCES.txt
-tfunc.egg-info/dependency_links.txt
-tfunc.egg-info/not-zip-safe
-tfunc.egg-info/requires.txt
-tfunc.egg-info/top_level.txt

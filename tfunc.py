@@ -14,13 +14,18 @@ from sqlalchemy.orm import sessionmaker
 urllib3.disable_warnings()
 
 
-def get_time(fmt=None):
-    if not fmt:
-        fmt = "%Y-%m-%d %H:%M:%S"
-    now = int(time.time())
-    time_array = time.localtime(now)
-    other_style_time = time.strftime(fmt, time_array)
-    return other_style_time
+class Time(object):
+    def __init__(self):
+        self.fmt = "%Y-%m-%d %H:%M:%S"
+        self.time = time.time()
+
+    def get_fmt_time(self, fmt=None):
+        if not fmt:
+            fmt = self.fmt
+        now = int(time.time())
+        time_array = time.localtime(now)
+        other_style_time = time.strftime(fmt, time_array)
+        return other_style_time
 
 
 class Logger(object):
