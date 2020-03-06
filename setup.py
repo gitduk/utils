@@ -7,10 +7,6 @@ setup(
     include_package_data=True,
     zip_safe=False,
     install_requires=[
-        'bs4',
-        'fake_useragent',
-        'openpyxl',
-        'sqlalchemy',
-        'selenium',
+        'bs4', 'fake_useragent', 'openpyxl', 'sqlalchemy', 'selenium', 'requests', 'urllib3'
     ],
 )
