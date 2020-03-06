@@ -11,5 +11,6 @@ setup(
         'fake_useragent',
         'openpyxl',
         'sqlalchemy',
+        'selenium',
     ],
 )
