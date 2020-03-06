@@ -1,4 +1,0 @@
-bs4
-fake_useragent
-openpyxl
-sqlalchemy
