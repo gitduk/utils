@@ -6,7 +6,6 @@ import urllib3
 from bs4 import BeautifulSoup
 from fake_useragent import UserAgent
 from selenium import webdriver
-from selenium.webdriver.chrome import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
 from selenium.webdriver.support import expected_conditions as EC
@@ -85,15 +84,3 @@ class WebC(object):
         driver.implicitly_wait(10)
         driver.get(self.__url)
         return driver
-
-    def selenium_drive_waiter(self, wait_time, locator, option='located', text=None):
-        driver = self.selenium_driver
-        if option == 'located':
-            WebDriverWait(driver, wait_time, 0.5).until(EC.presence_of_element_located(locator))
-        elif option == 'all_located':
-            WebDriverWait(driver, wait_time, 0.5).until(EC.presence_of_all_elements_located(locator))
-        elif option == 'visibility':
-            WebDriverWait(driver, wait_time, 0.5).until(EC.visibility_of_element_located(locator))
-        elif option == 'text_present':
-            WebDriverWait(driver, wait_time, 0.5).until(
-                EC.text_to_be_present_in_element(locator, text))
