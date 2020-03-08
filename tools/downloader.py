@@ -3,14 +3,14 @@ import re
 import sys
 import time
 import requests
-from tools.log import Logger
+from tools.logger import Logger
 
 
 class Downloader(object):
     def __init__(self, path, url, name, postfix):
         self._path = path
         self._url = url
-        self._name = name
+        self._name = name.strip().strip('.mp4')
         self._max_retry = 3
         self.postfix = postfix
         self.logger = Logger()
@@ -32,7 +32,6 @@ class Downloader(object):
         return self._max_retry
 
     def download_picture(self):
-        print('-' * 100)
         self.logger.info('Path: {}'.format(self.path + self.name + self.postfix))
         if not os.path.exists(self.path):
             os.mkdir(self.path)
@@ -43,7 +42,8 @@ class Downloader(object):
 
     def download_video(self):
         print('-' * 100)
-        self.logger.info('Path: {}'.format(self.path + self.name + self.postfix))
+        file_path = self.path + self.name + '.' + self.postfix
+        self.logger.info('Path: {}'.format(file_path))
         start = time.time()
         download_header = {
             "Accept-Encoding": "identity;q=1, *;q=0",
@@ -57,8 +57,8 @@ class Downloader(object):
             os.mkdir(self.path)
 
         content_offset = 0
-        if os.path.exists(self.path + self.name):
-            content_offset = os.path.getsize(self.path + self.name)
+        if os.path.exists(file_path):
+            content_offset = os.path.getsize(file_path)
 
         content_length = 1024 * 1024 * 1000
         chunk_size = 1024
@@ -73,7 +73,7 @@ class Downloader(object):
                 s.headers["Range"] = "bytes=%d-%d" % (content_offset, content_offset + content_length)
                 resp = s.get(self.url, timeout=10)
                 if not resp.ok:
-                    self.logger.info("Downloaded! [{:.2f}MB]".format(size / (1024 * 1024)))
+                    self.logger.info("File Exist! [{:.2f}MB]".format(size / (1024 * 1024)))
                     if resp.status_code == 416:
                         return
                     continue
@@ -85,7 +85,7 @@ class Downloader(object):
                 if resp_offset != content_offset:
                     continue
 
-                with open(self.path + self.name + '.' + self.postfix, 'ab') as file:
+                with open(file_path, 'ab') as file:
                     progress_bar_length = 50
                     for data in resp.iter_content(chunk_size=chunk_size):
                         file.write(data)
@@ -100,7 +100,8 @@ class Downloader(object):
                         sys.stdout.flush()
 
                 end = time.time()
-                self.logger.info("总耗时: " + "{:.2f}".format(end - start) + "秒\n")
+                print('\n')
+                self.logger.info("总耗时: " + "{:.2f}".format(end - start) + "秒")
 
                 content_offset += resp_length
                 if content_offset >= total_length:

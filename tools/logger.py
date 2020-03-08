@@ -1,4 +1,4 @@
-from tools.time import Time
+from tools.timer import Time
 
 
 class Logger(object):

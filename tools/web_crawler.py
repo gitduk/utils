@@ -1,5 +1,6 @@
 import os
 import time
+from threading import Thread
 from urllib import request
 import requests
 import urllib3
@@ -8,8 +9,6 @@ from fake_useragent import UserAgent
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.support.wait import WebDriverWait
 
 urllib3.disable_warnings()
 
@@ -27,7 +26,7 @@ class WebC(object):
             'User-Agent': self.__ua.random
         }
         self.__url = url
-        self.__save = True
+        self.__save = False
         self.__char = 'utf-8'
 
     @property
@@ -84,3 +83,7 @@ class WebC(object):
         driver.implicitly_wait(10)
         driver.get(self.__url)
         return driver
+
+
+
+
