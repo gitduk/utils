@@ -9,6 +9,7 @@ class Time(object):
     def set_fmt(self, fmt):
         self.fmt = fmt
 
+    @property
     def get_fmt_time(self):
         now = int(time.time())
         time_array = time.localtime(now)

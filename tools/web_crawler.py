@@ -1,6 +1,5 @@
 import os
 import time
-from threading import Thread
 from urllib import request
 import requests
 import urllib3
@@ -47,9 +46,8 @@ class WebC(object):
 
     @property
     def html(self):
-        time.sleep(0.2)
-        rq = requests.get(self.__url, headers=self.__headers)
         time.sleep(0.5)
+        rq = requests.get(self.__url, headers=self.__headers)
         rq.encoding = self.__char
         html = rq.text
         if self.save:
@@ -77,13 +75,9 @@ class WebC(object):
         chrome_options = Options()
         chrome_options.add_argument('--headless')
         chrome_options.add_argument('--disable-gpu')
-        desired_capabilities = DesiredCapabilities.CHROME  # 修改页面加载策略
-        desired_capabilities["pageLoadStrategy"] = "none"  # 注释这两行会导致最后输出结果的延迟，即等待页面加载完成再输出
+        # desired_capabilities = DesiredCapabilities.CHROME  # 修改页面加载策略
+        # desired_capabilities["pageLoadStrategy"] = "none"  # 注释这两行会导致最后输出结果的延迟，即等待页面加载完成再输出
         driver = webdriver.Chrome(chrome_options=chrome_options)
-        driver.implicitly_wait(10)
+        # driver.implicitly_wait(10)
         driver.get(self.__url)
         return driver
-
-
-
-

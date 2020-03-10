@@ -37,3 +37,4 @@ class Excel(object):
 
     def save(self):
         self.wb.save(self.path)
+
