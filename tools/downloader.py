@@ -2,6 +2,7 @@ import os
 import re
 import sys
 import time
+from tools.timer import Time
 import requests
 from tools.logger import Logger
 from tools.multithread import ThreadPool
@@ -13,15 +14,19 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 class Downloader(object):
     def __init__(self, path, url, name, postfix):
+        self.lg = Logger()
         self._path = path
         self._url = url
-        self._name = name.strip().strip('.mp4')
+        self._name = name
         self._max_retry = 3
         self.postfix = postfix
-        self.logger = Logger()
+        self.time = Time()
+        self.time.set_fmt('%H:%M:%S')
+        if not os.path.exists(path):
+            os.makedirs(path)
 
     def __repr__(self):
-        return '{}|{}|{}'.format(self.name, self.postfix, self.url)
+        return '{}|{}|{}'.format(self._name, self.postfix, self._url)
 
     @property
     def path(self):
@@ -39,24 +44,46 @@ class Downloader(object):
     def max_retry(self):
         return self._max_retry
 
-    def download_picture(self):
-        self.logger.info('Path: {}'.format(self.path + self.name + self.postfix))
-        if not os.path.exists(self.path):
-            os.mkdir(self.path)
-        r = requests.get(self.url, stream=True)
-        with open(self.path + self.name + '.' + self.postfix, 'wb') as f:
-            for chunk in r.iter_content(chunk_size=32):
-                f.write(chunk)
+    def run(self):
+        max_retry_count = self.max_retry
+        retry_count = 0
+        while retry_count < max_retry_count:
+            try:
+                self.start_download()
+                break
+            except Exception as Ex:
+                self.lg.error()
+                retry_count += 1
 
-    def download_video(self):
+        if retry_count >= max_retry_count:
+            resp = requests.get(self._url)
+            if resp.status_code != 404:
+                time.sleep(60)
+                try:
+                    self.start_download()
+                except:
+                    self.lg.error()
+            self.lg.warning("Download failed|{}".format(resp.status_code))
+
+    def start_download(self):
+        # deal with file type
+        if self.postfix == 'video':
+            chunk_size = 1024
+            self._name = self._name.strip().strip('.mp4')
+            self.postfix = 'mp4'
+        elif self.postfix == 'img':
+            time.sleep(1)
+            chunk_size = 32
+            self.postfix = self._url.split('.')[-1]
+
         # print('\n' + '-' * 100)
         start = time.time()
-        _file_path = '{}[✴]{}.{}'.format(self.path, self.name, self.postfix)
-        file_path = '{}{}.{}'.format(self.path, self.name, self.postfix)
+        _file_path = '{}/[✴]{}.{}'.format(self._path, self._name, self.postfix)
+        file_path = '{}/{}.{}'.format(self._path, self._name, self.postfix)
 
         if os.path.exists(file_path):
-            file_size = os.path.getsize(self.path + self.name + '.' + self.postfix)
-            self.logger.info("File Downloaded {:.2f}MB {}".format(file_size / (1024 * 1024), self.name))
+            file_size = os.path.getsize(file_path)
+            self.lg.info("File downloaded|{:.2f}MB|{}|{}".format(file_size / (1024 * 1024), self._name, self._url))
             return
 
         with requests.session() as req:
@@ -66,70 +93,63 @@ class Downloader(object):
             req.headers = {
                 "Accept-Encoding": "identity;q=1, *;q=0",
                 "Range": None,
-                "Referer": self.url,
+                "Referer": self._url,
                 # "Connection": "Close",
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/54.0.2840.59 Safari/537.36 115Browser/8.6.2"
             }
             # ================================================= first request get total length
-            resp = req.get(self.url)
-            total_length = int(resp.headers['Content-Length'])
+            resp = req.get(self._url)
 
-            # deal whit invaild url
-            if total_length == 0:
-                self.logger.warning('Invalid Url! {}'.format(self.name))
+            is_chunked = resp.headers.get('transfer-encoding', '') == 'chunked'
+            content_length_s = resp.headers.get('content-length')
+            if not is_chunked and content_length_s.isdigit():
+                total_length = int(content_length_s)
+            else:
+                total_length = None
+                self.lg.warning('Content-Lenght is null|{}|{} |{}'.format(self._name, self._url, resp.status_code))
                 return
 
             content_offset = 0
             if os.path.exists(_file_path):
                 content_offset = os.path.getsize(_file_path)
-                self.logger.info(
-                    'Continue To Download {:.2f}MB/{:.2f}MB {}'.format(content_offset / (1024 * 1024),
-                                                                         total_length / (1024 * 1024), self.name))
+                self.lg.info(
+                    'Continue to download|{:.2f}MB/{:.2f}MB|{}|{}'.format(content_offset / (1024 * 1024),
+                                                                          total_length / (1024 * 1024), self._name,
+                                                                          self._url)
+                )
             else:
-                self.logger.info("Start To Download {:.2f}MB {}".format(total_length / (1024 * 1024), self.name))
+                self.lg.info(
+                    "Start to download|{:.2f}MB|{}|{}".format(total_length / (1024 * 1024), self._name, self._url))
 
             # =================================================== second request with head to download the remain data
             req.headers = {'Range': "bytes=%d-%d" % (content_offset, content_offset + total_length)}
-            resp = req.get(self.url)
-            chunk_size = 1024
+            resp = req.get(self._url)
             size = content_offset
+            fmt = self.lg.fmt
+            pre_module = sys._getframe(1).f_code.co_filename.split('/')[-1].split('.')[0]
             with open(_file_path, 'ab') as file:
-                progress_bar_length = 50
+                progress_bar_length = 30
                 for data in resp.iter_content(chunk_size=chunk_size):
                     file.write(data)
                     size += len(data)
                     done = int(progress_bar_length * size / total_length)
                     sys.stdout.write(
-                        "\r[{}{}] [{:.2f}MB] [{:.2f}MB] [{}]".format('=' * done, ' ' * (progress_bar_length - done),
-                                                                     size / chunk_size / 1024,
-                                                                     total_length / (1024 * 1024),
-                                                                     self.name
-                                                                     # str(round(float(size / total_length) * 100, 2)), # %
-                                                                     ))
+                        fmt.format(self.time.get_fmt_time, pre_module, '\033[1;32mINFO\033[0m',
+                                   "[{}{}] [{:.2f}MB] [{:.2f}MB] [{}] [{}]".format('=' * done,
+                                                                                   ' ' * (progress_bar_length - done),
+                                                                                   size / (1024 * 1024),
+                                                                                   total_length / (1024 * 1024),
+                                                                                   self._name,
+                                                                                   self._url,
+                                                                                   # str(round(float(size / total_length) * 100, 2)), # %
+                                                                                   )))
                     sys.stdout.flush()
+                    file.flush()
             os.rename(_file_path, file_path)
             end = time.time()
-            self.logger.info(
-                "下载完成|大小:{:.2f}MB 耗时: {:.2f}秒 文件名:{}".format(total_length / (1024 * 1024), end - start, self.name))
-
-    def run(self):
-        max_retry_count = self.max_retry
-        retry_count = 0
-        while retry_count < max_retry_count:
-            try:
-                if self.postfix == 'mp4':
-                    self.download_video()
-                elif self.postfix in ['jpg', 'png']:
-                    self.download_picture()
-                break
-            except Exception as Ex:
-                self.logger.error()
-                retry_count += 1
-
-        if retry_count == max_retry_count:
-            self.logger.warning("下载失败")
-        else:
-            self.logger.info("下载结束")
+            self.lg.info(
+                "Download successfully|{:.2f}S|{:.2f}MB|{}|{}".format(end - start, total_length / (1024 * 1024),
+                                                                      self._name, self._url))
 
     @path.setter
     def path(self, value):
@@ -153,21 +173,23 @@ class Download_from_file(object):
         self.file_path = file_path
         self.save_path = save_path
         self.info = info
+        self.selector = {'txt': symbol, 'csv': ','}
 
     @property
-    def download_project_list(self):
+    def downloader_list(self):
         project_list = []
-        with open('dld.txt', 'r') as f:
+        symbol = self.selector(self.file_path.split('.')[-1])
+        with open(self.file_path, 'r') as f:
             for i in f:
-                num = len(i.split('|'))
+                num = len(i.split(symbol))
                 if num == 3:
-                    url = i.split('|')[1]
-                    name = i.split('|')[2]
+                    url = i.split(symbol)[1]
+                    name = i.split(symbol)[2]
                     d = Downloader(self.save_path, url, name, 'mp4')
                     project_list.append(d)
                 elif num == 2:
-                    url = i.split('|')[0]
-                    name = i.split('|')[1]
+                    url = i.split(symbol)[0]
+                    name = i.split(symbol)[1]
                     d = Downloader(self.save_path, url, name, 'mp4')
                     project_list.append(d)
         return project_list
@@ -177,5 +199,6 @@ class Download_from_file(object):
 
     def start(self, max_thread=10):
         t_pool = ThreadPool(max_thread, info=self.info)
-        t_pool.add_task_list(self.run, self.download_project_list)
+        key = self.file_path.split(".")[-1]
+        t_pool.add_task_list(self.run, self.downloader_list)
         t_pool.run()

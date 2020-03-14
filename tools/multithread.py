@@ -37,7 +37,10 @@ class ThreadPool(object):
         return self._task_queue
 
     def add_task(self, func, *args, **kwargs):
-        task = (func, args, kwargs)
+        if isinstance(args[0], tuple):
+            task = (func, args[0], kwargs)
+        else:
+            task = (func, args, kwargs)
         self.task_queue.put(task)
 
     def add_task_list(self, func, arg_list):
