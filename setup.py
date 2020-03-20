@@ -5,7 +5,7 @@ with open ( "README.md" , "r" ) as fh :
 
 setup(
     name='tfuc',
-    version='1.0.0',
+    version='1.0.8',
     author = "dongkai",
     author_email = "wdkany@qq.com",
     description = "some useful tools",

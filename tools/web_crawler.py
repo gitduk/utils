@@ -1,28 +1,35 @@
 import os
-import time
-from urllib import request
 import json
+import time
+
 import requests
 import urllib3
 from bs4 import BeautifulSoup
-from fake_useragent import UserAgent
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
+import random
 
 urllib3.disable_warnings()
 
 
 class WebC(object):
-    def __init__(self, url=None, headers=None, cookies={}, timeout=30):
-        from fake_useragent import UserAgent
+    def __init__(self, url=None, headers=None, cookies=None, proxies=None, timeout=30, ip=False):
+        _headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/53.0.2785.143 Safari/537.36'
+        }
         self._url = url
         self._save = False
         self._encode = 'utf-8'
         self._response = None
-        self._cookies = cookies
         self._timeout = timeout
         self._headers = headers
+        self._proxies = proxies
+        self._cookies = cookies
+        if not headers:
+            self.headers = _headers
+        if not proxies and ip:
+            self._proxies = self.random_ip
         if cookies:
             self.cookies = cookies
 
@@ -69,13 +76,14 @@ class WebC(object):
 
     @property
     def response(self):
-        self._response = requests.get(self._url, headers=self._headers, cookies=self._cookies, timeout=self._timeout)
+        self._response = requests.get(self._url, headers=self._headers, cookies=self._cookies, timeout=self._timeout,
+                                      proxies=self._proxies)
         return self._response
 
     @property
     def html(self, save_path=None):
         resp = self.response
-        resp.encoding = self._char
+        resp.encoding = self.encode
         html = resp.text
         if self.save:
             with open('{}.html'.format(save_path), 'w') as f:
@@ -109,7 +117,27 @@ class WebC(object):
         return json.loads(self.response.content)
 
     def get_payload_data(self, data):
-        resp = requests.post(self._url, json=data, headers=self._headers)
+        resp = requests.post(self._url, json=data, headers=self._headers, proxies=self._proxies)
         ct = resp.content
         json_dict = json.loads(ct)
         return json_dict
+
+    @property
+    def random_ip(self):
+        time.sleep(0.5)
+        url = 'https://www.xicidaili.com/nn/'
+        web_data = requests.get(url, headers=self._headers)
+        soup = BeautifulSoup(web_data.text, 'html.parser')
+        ips = soup.find_all('tr')
+        ip_list = []
+        for i in range(1, len(ips)):
+            ip_info = ips[i]
+            tds = ip_info.find_all('td')
+            ip_list.append(tds[1].text + ':' + tds[2].text)
+
+        proxy_list = []
+        for ip in ip_list:
+            proxy_list.append('http://' + ip)
+        proxy_ip = random.choice(proxy_list)
+        proxies = {'http': proxy_ip}
+        return proxies

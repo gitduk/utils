@@ -23,7 +23,7 @@ class RUNThread(object):
 
 
 class ThreadPool(object):
-    def __init__(self, max_workers, info=True):
+    def __init__(self, max_workers, info=False):
         self.max_workers = max_workers
         self._task_queue = Queue()
         self.waiting_list = []
@@ -37,7 +37,10 @@ class ThreadPool(object):
         return self._task_queue
 
     def add_task(self, func, *args, **kwargs):
-        task = (func, args, kwargs)
+        if isinstance(args[0], tuple):
+            task = (func, args[0], kwargs)
+        else:
+            task = (func, args, kwargs)
         self.task_queue.put(task)
 
     def add_task_list(self, func, arg_list):
@@ -59,7 +62,7 @@ class ThreadPool(object):
                                                                                             self.working_list)) + '-' * 30)
                 self.working_list.remove(i)
 
-    def run(self):
+    def execute_task(self):
         if self.task_queue.length < self.max_workers:
             self.max_workers = self.task_queue.length
         if self.info:

@@ -1,5 +1,4 @@
 import os
-import re
 import sys
 import time
 from tools.timer import Time
@@ -7,14 +6,14 @@ import requests
 from tools.logger import Logger
 from tools.multithread import ThreadPool
 import urllib3
-import traceback
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+lg = Logger()
+
 
 class Downloader(object):
-    def __init__(self, path, url, name, postfix):
-        self.lg = Logger()
+    def __init__(self, path, url, name, postfix='mp4'):
         self._path = path
         self._url = url
         self._name = name
@@ -52,7 +51,7 @@ class Downloader(object):
                 self.start_download()
                 break
             except Exception as Ex:
-                self.lg.error()
+                lg.error()
                 retry_count += 1
 
         if retry_count >= max_retry_count:
@@ -62,16 +61,15 @@ class Downloader(object):
                 try:
                     self.start_download()
                 except:
-                    self.lg.error()
-            self.lg.warning("Download failed|{}".format(resp.status_code))
+                    lg.error()
+            lg.warning("Download failed|{}".format(resp.status_code))
 
+    @lg.log()
     def start_download(self):
         # deal with file type
-        if self.postfix == 'video':
-            chunk_size = 1024
-            self._name = self._name.strip().strip('.mp4')
-            self.postfix = 'mp4'
-        elif self.postfix == 'img':
+        chunk_size = 1024
+        self._name = self._name.strip().strip('.mp4')
+        if self.postfix == 'img':
             time.sleep(1)
             chunk_size = 32
             self.postfix = self._url.split('.')[-1]
@@ -83,7 +81,7 @@ class Downloader(object):
 
         if os.path.exists(file_path):
             file_size = os.path.getsize(file_path)
-            self.lg.info("File downloaded|{:.2f}MB|{}|{}".format(file_size / (1024 * 1024), self._name, self._url))
+            lg.info("File downloaded|{:.2f}MB|{}|{}".format(file_size / (1024 * 1024), self._name, self._url))
             return
 
         with requests.session() as req:
@@ -99,33 +97,32 @@ class Downloader(object):
             }
             # ================================================= first request get total length
             resp = req.get(self._url)
-
             is_chunked = resp.headers.get('transfer-encoding', '') == 'chunked'
             content_length_s = resp.headers.get('content-length')
             if not is_chunked and content_length_s.isdigit():
                 total_length = int(content_length_s)
             else:
                 total_length = None
-                self.lg.warning('Content-Lenght is null|{}|{} |{}'.format(self._name, self._url, resp.status_code))
+                lg.warning('Content-Lenght is null|{}|{} |{}'.format(self._name, self._url, resp.status_code))
                 return
 
             content_offset = 0
             if os.path.exists(_file_path):
                 content_offset = os.path.getsize(_file_path)
-                self.lg.info(
+                lg.info(
                     'Continue to download|{:.2f}MB/{:.2f}MB|{}|{}'.format(content_offset / (1024 * 1024),
                                                                           total_length / (1024 * 1024), self._name,
                                                                           self._url)
                 )
             else:
-                self.lg.info(
+                lg.info(
                     "Start to download|{:.2f}MB|{}|{}".format(total_length / (1024 * 1024), self._name, self._url))
 
             # =================================================== second request with head to download the remain data
             req.headers = {'Range': "bytes=%d-%d" % (content_offset, content_offset + total_length)}
             resp = req.get(self._url)
             size = content_offset
-            fmt = self.lg.fmt
+            fmt = ''
             pre_module = sys._getframe(1).f_code.co_filename.split('/')[-1].split('.')[0]
             with open(_file_path, 'ab') as file:
                 progress_bar_length = 30
@@ -133,21 +130,16 @@ class Downloader(object):
                     file.write(data)
                     size += len(data)
                     done = int(progress_bar_length * size / total_length)
-                    sys.stdout.write(
-                        fmt.format(self.time.get_fmt_time, pre_module, '\033[1;32mINFO\033[0m',
-                                   "[{}{}] [{:.2f}MB] [{:.2f}MB] [{}] [{}]".format('=' * done,
-                                                                                   ' ' * (progress_bar_length - done),
-                                                                                   size / (1024 * 1024),
-                                                                                   total_length / (1024 * 1024),
-                                                                                   self._name,
-                                                                                   self._url,
-                                                                                   # str(round(float(size / total_length) * 100, 2)), # %
-                                                                                   )))
-                    sys.stdout.flush()
+                    lg.info(
+                        "[{}{}] [{:.2f}MB] [{:.2f}MB] [{}]".format('=' * done, ' ' * (progress_bar_length - done),
+                                                                   size / (1024 * 1024),
+                                                                   total_length / (1024 * 1024), self._name,
+                                                                   # str(round(float(size / total_length) * 100, 2)), # %
+                                                                   ), end='')
                     file.flush()
-            os.rename(_file_path, file_path)
+                os.rename(_file_path, file_path)
             end = time.time()
-            self.lg.info(
+            lg.info(
                 "Download successfully|{:.2f}S|{:.2f}MB|{}|{}".format(end - start, total_length / (1024 * 1024),
                                                                       self._name, self._url))
 
@@ -169,18 +161,21 @@ class Downloader(object):
 
 
 class Download_from_file(object):
-    def __init__(self, file_path, save_path, info=True):
+    def __init__(self, file_path, save_path, info=False):
         self.file_path = file_path
         self.save_path = save_path
         self.info = info
-        self.selector = {'txt': symbol, 'csv': ','}
+        self.selector = {'txt': '|', 'csv': ','}
 
     @property
     def downloader_list(self):
         project_list = []
-        symbol = self.selector(self.file_path.split('.')[-1])
+        symbol = self.selector[self.file_path.split('.')[-1]]
         with open(self.file_path, 'r') as f:
-            for i in f:
+            lines = f.readlines()
+            if symbol == ',':
+                lines = lines[1:]
+            for i in lines:
                 num = len(i.split(symbol))
                 if num == 3:
                     url = i.split(symbol)[1]
@@ -201,4 +196,4 @@ class Download_from_file(object):
         t_pool = ThreadPool(max_thread, info=self.info)
         key = self.file_path.split(".")[-1]
         t_pool.add_task_list(self.run, self.downloader_list)
-        t_pool.run()
+        t_pool.execute_task()

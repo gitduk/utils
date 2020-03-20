@@ -9,6 +9,9 @@ class Time(object):
     def set_fmt(self, fmt):
         self.fmt = fmt
 
+    def sleep(self,n):
+        time.sleep(n)
+
     @property
     def get_fmt_time(self):
         now = int(time.time())
