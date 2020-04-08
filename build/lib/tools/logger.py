@@ -1,5 +1,6 @@
 from tools.timer import Time
 import traceback
+import numpy
 import sys
 import os
 from threading import get_ident, current_thread, Lock
@@ -34,17 +35,30 @@ class Logger(object):
         self.pre_func = sys._getframe(1).f_code.co_name
 
     def sp(self, *msg):
-        print('-' * 100)
+        idx = 0
         for i in msg:
+            _type = str(type(i)).strip('<class ').strip('>')
             if isinstance(i, list):
-                _num = len(i)
-                print('Lenght:{}'.format(_num))
-                num = _num // 10
-                index = [i * 10 for i in range(0, num + 1)]
+                _len = len(i)
+                print('{} {}'.format('-' * 100, idx))
+                print('Type:{}  Lenght:{}'.format(_type, _len))
+                i_len = _len // 10
+                index = [i * 10 for i in range(i_len)]
                 for j in index:
                     print(i[j:j + 10])
-            else:
+            elif isinstance(i, numpy.ndarray):
+                print('{} {}'.format('-' * 100, idx))
+                _shape = i.shape
+                print('Type:{}  Shape:{}'.format(_type, _shape))
                 print(i)
+            elif isinstance(i, int):
+                print('{} {}'.format('-' * 100, idx))
+                print(i)
+            else:
+                print('{} {}'.format('-' * 100, idx))
+                # print('Type:{}  Lenght:{}   Words:{}'.format(_type, len(i), len(i.split(' '))))
+                print(i)
+            idx = idx + 1
 
     @property
     def prompt(self):
