@@ -5,7 +5,7 @@ with open ( "README.md" , "r" ) as fh :
 
 setup(
     name='tfuc',
-    version='1.0.8',
+    version='1.0.9',
     author = "dongkai",
     author_email = "wdkany@qq.com",
     description = "some useful tools",
@@ -17,6 +17,8 @@ setup(
     include_package_data=True,
     zip_safe=False,
     install_requires=[
-        'bs4', 'fake_useragent', 'openpyxl', 'sqlalchemy', 'selenium', 'requests', 'urllib3'
+        'sqlalchemy', 'xlrd', 'xlsxwriter', 'openpyxl',
+        'urllib3',
+        'bs4', 'fake_useragent', 'selenium', 'requests',
     ],
 )
