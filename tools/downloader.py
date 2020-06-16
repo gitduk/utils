@@ -196,4 +196,4 @@ class Download_from_file(object):
         t_pool = ThreadPool(max_thread, info=self.info)
         key = self.file_path.split(".")[-1]
         t_pool.add_task_list(self.run, self.downloader_list)
-        t_pool.execute_task()
+        t_pool.start()

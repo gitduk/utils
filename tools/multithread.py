@@ -62,7 +62,7 @@ class ThreadPool(object):
                                                                                             self.working_list)) + '-' * 30)
                 self.working_list.remove(i)
 
-    def execute_task(self):
+    def start(self):
         if self.task_queue.length < self.max_workers:
             self.max_workers = self.task_queue.length
         if self.info:

@@ -58,9 +58,9 @@ class ExcelWriter(object):
 
 class ExcelReader(object):
     def __init__(self, path=None):
-        self.sheet_list = []
+        self.sheet_object_list = []
         self.name = path.split('/')[-1].split('.')[0]
-        self.data = []
+        self.sheet_list = []
         if path:
             self.read_excel(path)
 
@@ -72,23 +72,29 @@ class ExcelReader(object):
         # get sheet object list
         for i in range(wb_num):
             sheet = wb.sheet_by_index(i)  # 通过索引获取表格
-            self.sheet_list.append(sheet)
+            self.sheet_object_list.append(sheet)
 
         # get data
-        for i in self.sheet_list:
+        for i in self.sheet_object_list:
             table_data = []
             tabel_length = len(i.col_values(0))
             for j in range(tabel_length):
                 table_data.append(i.row_values(j))  # 获取行内容
-            self.data.append(table_data)
+            self.sheet_list.append(table_data)
 
-        return self.data
+        return self.sheet_list
 
     def to_csv(self, path=None, sheet_index=0):
         if not path:
             path = self.name + '.csv'
         csv = CsvWriter(path)
         csv.write_lines(self.data[sheet_index])
+
+    def T(self, data):
+        result = []
+        for i in zip(*data):
+            result.append(list(i))
+        return result
 
 
 class CsvWriter(object):
@@ -150,4 +156,3 @@ class CsvReader(object):
         ew.write_lines(lines)
         ew.close_book()
         lg.info('File \'{}\' Write Done!'.format(path))
-

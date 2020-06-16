@@ -34,28 +34,27 @@ class Logger(object):
         self.pre_module = None
         self.pre_func = sys._getframe(1).f_code.co_name
 
-    def sp(self, *msg):
+    def prt(self, *msg):
         idx = 0
         for i in msg:
+            if idx != 0:
+                print("\n")
             _type = str(type(i)).strip('<class ').strip('>')
             if isinstance(i, list):
                 _len = len(i)
-                print('{} {}'.format('-' * 100, idx))
                 print('Type:{}  Lenght:{}'.format(_type, _len))
-                i_len = _len // 10
-                index = [i * 10 for i in range(i_len)]
-                for j in index:
-                    print(i[j:j + 10])
+                # i_len = _len // 10
+                # index = [i * 10 for i in range(i_len)]
+                # for j in index:
+                #     print(i[j:j + 10])
+                print(i)
             elif isinstance(i, numpy.ndarray):
-                print('{} {}'.format('-' * 100, idx))
                 _shape = i.shape
                 print('Type:{}  Shape:{}'.format(_type, _shape))
                 print(i)
             elif isinstance(i, int):
-                print('{} {}'.format('-' * 100, idx))
                 print(i)
             else:
-                print('{} {}'.format('-' * 100, idx))
                 # print('Type:{}  Lenght:{}   Words:{}'.format(_type, len(i), len(i.split(' '))))
                 print(i)
             idx = idx + 1
