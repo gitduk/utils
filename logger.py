@@ -1,4 +1,4 @@
-from tools.timer import Time
+from tfuc.timer import Time
 import traceback
 import numpy
 import sys
@@ -79,6 +79,7 @@ class Logger(object):
 
     def warning(self, msg):
         level = 2
+
         if level >= self.level:
             mode = self.mode[level - 1]
             prompt = self.prompt
@@ -91,13 +92,17 @@ class Logger(object):
             prompt = self.prompt
             type_, value_, traceback_ = sys.exc_info()
             ex = traceback.format_exception(type_, value_, traceback_)
-            print(self.fmt.format(prompt[0], prompt[1], prompt[2], mode, '\033[1;31m{}\033[0m'.format('*' * 100)))
-            for i in ex[1:]:
-                print(self.fmt.format(prompt[0], prompt[1], prompt[2], mode, i.splitlines(True)[0].strip()))
+            with open("error.log", "a+") as f:
+                f.write(self.fmt.format(prompt[0], prompt[1], prompt[2], mode, '\033[1;31m{}\033[0m'.format('*' * 100)))
+                print(self.fmt.format(prompt[0], prompt[1], prompt[2], mode, '\033[1;31m{}\033[0m'.format('*' * 100)))
+                for i in ex[1:]:
+                    f.write(self.fmt.format(prompt[0], prompt[1], prompt[2], mode, i.splitlines(True)[0].strip()))
+                    print(self.fmt.format(prompt[0], prompt[1], prompt[2], mode, i.splitlines(True)[0].strip()))
 
-            if msg:
-                print(self.fmt.format(prompt[0], prompt[1], prompt[2], mode, msg))
-            print(self.fmt.format(prompt[0], prompt[1], prompt[2], mode, '\033[1;31m{}\033[0m'.format('*' * 100)))
+                if msg:
+                    f.write(self.fmt.format(prompt[0], prompt[1], prompt[2], mode, msg))
+                    print(self.fmt.format(prompt[0], prompt[1], prompt[2], mode, msg))
+                # print(self.fmt.format(prompt[0], prompt[1], prompt[2], mode, '\033[1;31m{}\033[0m'.format('*' * 100)))
 
     def log(self, level=0):
         def L(func):

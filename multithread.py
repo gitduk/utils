@@ -1,25 +1,25 @@
 from threading import Thread
 import time
 import threading
-from tools.logger import Logger
+from tfuc.logger import Logger
 from concurrent.futures.thread import ThreadPoolExecutor
-from tools.queue import Queue
+from tfuc.queue import Queue
 
 
-class RUNThread(object):
-    def __init__(self, thread):
-        self.thread = thread
-        self.run()
-
-    def run(self):
-        if isinstance(self.thread, list):
-            for thread in self.thread:
-                thread.start()
-            for thread in self.thread:
-                thread.join()
-        elif isinstance(self.thread, (Thread, MYThread)):
-            self.thread.start()
-            self.thread.join()
+# class RUNThread(object):
+#     def __init__(self, thread):
+#         self.thread = thread
+#         self.run()
+#
+#     def run(self):
+#         if isinstance(self.thread, list):
+#             for thread in self.thread:
+#                 thread.start()
+#             for thread in self.thread:
+#                 thread.join()
+#         elif isinstance(self.thread, (Thread, MYThread)):
+#             self.thread.start()
+#             self.thread.join()
 
 
 class ThreadPool(object):
@@ -49,6 +49,7 @@ class ThreadPool(object):
 
     def wait_work_done(self):
         for i in self.waiting_list:
+            time.sleep(0.5)
             i.start()
             self.waiting_list.remove(i)
             self.working_list.append(i)

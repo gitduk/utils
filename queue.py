@@ -1,6 +1,6 @@
 import time
 import threading
-from tools.logger import Logger
+from tfuc.logger import Logger
 
 
 class Queue(object):
