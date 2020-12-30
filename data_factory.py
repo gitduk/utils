@@ -156,3 +156,36 @@ class CsvReader(object):
         ew.write_lines(lines)
         ew.close_book()
         lg.info('File \'{}\' Write Done!'.format(path))
+
+
+def replaces(*rep_map_list, target=None, replace_key=False):
+    new_target = {}
+
+    for rep_map in rep_map_list:
+        if not isinstance(rep_map, dict):
+            values = ['' for _ in rep_map]
+            rep_map = dict(zip(list(rep_map), values))
+        for k, v in rep_map.items():
+
+            # process target type
+            if type(target).__name__ == 'str' and target != '':
+                target = target.replace(k, v)
+            elif type(target).__name__ == 'list':
+                rep_str = '|'.join(target)
+                target = rep_str.replace(k, v).split('|')
+
+            # target is a dict
+            elif type(target).__name__ == 'dict':
+                for k_, v_ in target.items():
+                    v_ = v_ if v_ else ''
+                    if not replace_key:
+                        target[k_] = v_.replace(k, v)
+                    else:
+                        new_target[k_.replace(k, v)] = v_.replace(k, v)
+
+            elif target is None:
+                return ''
+
+    return new_target if replace_key else target
+
+
