@@ -227,3 +227,17 @@ def trans_list_to_dict(data_list):
                 result = {**result, key: value}
 
     return result
+
+
+def find(target, dict_data, find_key=False):
+    queue = [dict_data]
+    while len(queue) > 0:
+        data = queue.pop()
+        for key, value in data.items():
+            if key == target:
+                return value
+            elif value == target and find_key:
+                return key
+            elif type(value) == dict:
+                queue.append(value)
+    return ''
