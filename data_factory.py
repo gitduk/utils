@@ -159,8 +159,6 @@
 #
 
 def replaces(*rep_map_list, target=None, replace_key=False):
-    new_target = {}
-
     for rep_map in rep_map_list:
         if not isinstance(rep_map, dict):
             values = ['' for _ in rep_map]
@@ -176,17 +174,21 @@ def replaces(*rep_map_list, target=None, replace_key=False):
 
             # target is a dict
             elif type(target).__name__ == 'dict':
+                new_target = {}
                 for k_, v_ in target.items():
                     v_ = v_ if v_ else ''
                     if not replace_key:
                         target[k_] = v_.replace(k, v)
                     else:
-                        new_target[k_.replace(k, v)] = v_.replace(k, v)
+                        new_key = k_.replace(k, v)
+                        new_value = v_.replace(k, v)
+                        new_target[new_key] = new_value
+                target = new_target
 
             elif target is None:
                 return ''
 
-    return new_target if replace_key else target
+    return target
 
 
 def del_dict_depth(data_dict):

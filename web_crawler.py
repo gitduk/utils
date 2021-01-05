@@ -143,29 +143,216 @@
 #         return proxies
 #
 #
+import inspect
+import json
+import os
+import random
+import re
+import time
+import logging
+from urllib.parse import urlencode
+
+logger = logging.getLogger(__name__)
+
+
+def save_html(response, name):
+    with open(f"/home/kaige/Github/gov/cn12348/files/{name}.html", "w") as f:
+        f.write(response.text)
+
+
+def retrieve_name(var):
+    """
+    获取变量名
+    """
+    callers_local_vars = inspect.currentframe().f_back.f_locals.items()
+    var_name_list = [var_name for var_name, var_val in callers_local_vars if var_val is var]
+    if var_name_list:
+        return var_name_list[0]
+    else:
+        raise Exception
+
+
+def fmt_item(item):
+    if item is None:
+        return
+    else:
+        data = item.get("data")
+        remote_data_ = item.get("remote_data")
+        remote_data = del_dict_depth(remote_data_)
+        field_dict = item.get("field_dict")
+        value_len_list = [len(str(value)) for key, value in data.items()]
+        status = item.get("status")
+        changed_dict = item.get("changed_dict")
+
+        try:
+            max_length = max(value_len_list) + 2
+        except:
+            max_length = 10
+        else:
+            formatter = "{:<25} | {:<20} | {:<8} | {:<%d}" % (max_length + 6)
+
+            print('\n')
+            print(formatter.format("key", "db_key", "status", "value"))
+            print("-" * (60 + max_length))
+
+            db_map = {"update_time": "update_time", 'source': 'source'}
+            for key, value in field_dict.items():
+                if "|" in value:
+                    for f in value.split("|"):
+                        db_map[f] = key
+                else:
+                    db_map[value] = key
+
+            remote_data["update_time"] = data.get("update_time")
+            remote_data["source"] = data.get("source")
+            for key, value in remote_data.items():
+                db_key = db_map.get(key)
+                if db_key == "authority":
+                    continue
+
+                db_key = db_key if db_key else ''
+
+                msg = status if db_key else ""
+                if status == "UPDATE":
+                    msg = status if db_key in [key for key in changed_dict] else ""
+                    change_value = changed_dict.get(db_key)
+                    value = f"{change_value} --> {value}" if msg else value
+
+                if status == 'ERROR':
+                    msg = status
+
+                print(formatter.format(key, db_key, msg, str(value).strip()))
+
+            print("-" * (60 + max_length) + "\n")
+
+
+def time_to_time(timestamp):
+    timeArray = time.localtime(int(timestamp))
+    otherStyleTime = time.strftime("%Y-%m-%d %H:%M:%S", timeArray)
+    return otherStyleTime
+
+
+def del_dict_depth(data_dict):
+    data = {}
+    list_data = {}
+    for key, value in data_dict.items():
+        value = str(value)
+        if isinstance(value, dict):
+            data = {**data, **del_dict_depth(value)}
+        elif isinstance(value, list):
+            if not value:
+                continue
+            if isinstance(value[0], dict):
+                list_data[key] = trans_list_to_dict(value)
+            else:
+                value = '|'.join(value)
+            data = {**data, key: value}
+        else:
+            data = {**data, key: value}
+
+    return {**data, **list_data}
+
+
+def trans_list_to_dict(data_list):
+    result = {}
+    for data in data_list:
+        for key, value in data.items():
+            if key in [_ for _ in result.keys()]:
+                value_ = result.get(key)
+                result[key] = f'{value_}|{value}'
+            else:
+                result = {**result, key: value}
+
+    return result
+
+
+def parse_param_dict(param_dict, parse_key=False, value_index_list=None):
+    value_index_list = [0, 1] if value_index_list is None else value_index_list
+    if parse_key is True:
+        value_index_list.append(-1)
+
+    for key, value in param_dict.items():
+        param_list = value.split("|")
+
+        if parse_key:
+            param_list.append(key)
+
+        if param_list[1] == '':
+            continue
+
+        yield tuple(param_list[index] for index in value_index_list)
+
+
+def create_field(name):
+    create_parse_file = False
+    if 'ChinaSpider' in name:
+        name = re.search('parse_(.*?)_module_url', name).group(1)
+        create_parse_file = True
+
+    with open('spiders/fields/__init__.py', 'r') as f:
+        init_content = f.readlines()
+
+    file_path = f'spiders/fields/{name}_fields.py'
+
+    if not os.path.exists(file_path):
+        logger.info(f'create file {file_path}')
+        with open(file_path, "w") as f:
+            f.write(''.join(init_content))
+
+    if create_parse_file:
+        path = f'spiders/parse_module/{name}.py'
+        if not os.path.exists(path):
+            code = """
+from cn12348.spiders.parse_module import *
+from cn12348.spiders.fields.{}_fields import PERSON_FIELD_DICT, OFFICE_FIELD_DICT
+
+field_tuple = (PERSON_FIELD_DICT, OFFICE_FIELD_DICT)
+
+
+def level_two(response):
+    ...
+            """.format(name)
+            with open(path, 'w') as f:
+                f.write(code)
+
+
+def create_random_list(num, start=0):
+    """
+    num: int
+    """
+    lst = list(range(start, start + num))
+    random.shuffle(lst)
+    return lst
+
+
 class ParamFactory(object):
     """
-    body_str = 'a=b&c=d&e=f'
+    Process requests params and cookies
     """
 
-    def __init__(self, url, body_str=None):
-        self.url = url
+    def __init__(self, url, body_str=None, cookie_str=None):
+        self.update_count = 0
+        self.url = url if self.update_count == 0 else self.update_url()
         self.body_str = '' if body_str is None else body_str
+        self.cookie_str = '' if cookie_str is None else cookie_str
         self.param_dict = {}
+        self.cookie_dict = {}
         self.param = None
         self.method = 'POST' if body_str else 'GET'
         self.post_type = 'form' if self.method == 'POST' else ''
 
-        self._to_dict()
+        self.all_to_dict()
 
-    def _to_dict(self):
-        if '&' in self.body_str:
-            self.param_dict = dict([_.split('=') for _ in self.body_str.split('&')])
-        elif ':' in self.body_str:
-            self.post_type = 'payload'
-            self.param_dict = json.loads(self.body_str)
+    # FIXME ...
+    def update_url(self):
+        if self.method == 'GET' and '?' in self.url:
+            path = self.url.split('?')[0]
+            get_param_list = []
+            for key, value in self.param_dict.items():
+                get_param_list.append(f'{key}={value}')
+            return path + '?' + '&'.join(get_param_list)
         else:
-            self.param_dict = dict([_.split('=', 1) for _ in self.url.split('?')[-1].split('&')])
+            return self.url
 
     def form(self):
         self.param = '&'.join([f'{key}={value}' for key, value in self.param_dict.items()])
@@ -176,18 +363,131 @@ class ParamFactory(object):
         return self.param
 
     def update(self, key, value):
-        if isinstance(key, str):
+        self.param_dict[key] = value
+        self.update_count += 1
+
+    def update_from_list(self, key_list, value_list):
+        for key, value in zip(key_list, value_list):
             self.param_dict[key] = value
-        else:
-            for k, v in zip(key, value):
-                self.param_dict[k] = v
+        self.update_count += 1
 
-        if self.body_str == '':
-            self.url = self.url.split('?')[0] + '?' + urlencode(self.param_dict)
-            return self.url
+    def update_from_dict(self, update_map):
+        for key, value in update_map.items():
+            self.param_dict[key] = value
+        self.update_count += 1
 
+    def update_from_cookies(self, update_map):
+        for key, value in update_map.items():
+            self.param_dict[key] = self.cookie_dict.get(value)
+        self.update_count += 1
+
+    def all_to_dict(self):
+
+        # process request params
+        if '&' in self.body_str:
+            self.param_dict = dict([_.split('=') for _ in self.body_str.split('&')])
+        elif ':' in self.body_str:
+            self.post_type = 'payload'
+            self.param_dict = json.loads(self.body_str)
+        elif self.body_str == '':
+            self.param_dict = dict([_.split('=', 1) for _ in self.url.split('?')[-1].split('&')])
         else:
-            return self.form()
+            self.param_dict = {}
+            raise Exception('FIXME ... unexpect body type')
+
+        # process cookie string
+        if self.cookie_str == '':
+            return None
+
+        for field in self.cookie_str.split(';'):
+            keys = self.cookie_dict.keys()
+
+            key = field.split('=', 1)[0].strip()
+            value = field.split('=', 1)[1].strip()
+            value_in_dict = self.cookie_dict.get(key)
+            if key in keys and isinstance(value_in_dict, str):
+                self.cookie_dict[key] = [value_in_dict, value]
+            elif isinstance(value_in_dict, list):
+                self.cookie_dict[key].append(value)
+            else:
+                self.cookie_dict[key] = value
 
     def __repr__(self):
-        return f'url:{self.url}\nmethod:{self.method} ({self.post_type})\nparam:{self.param_dict}'
+        return f'url:{self.url}\nmethod:{self.method} ({self.post_type})\nparam:{self.param_dict}\ncookies:{self.cookie_dict}'
+
+
+def tran_list_to_dict(L):
+    d = {}
+    for l in L:
+        if '{\n' in l or '}\n' in l or '# \'' in l:
+            continue
+        if ':' in l:
+            key = l.split(':', 1)[0].replace("'", '').replace('\n', '').replace(',', '').replace(' ', '')
+            value = l.split(':', 1)[1]
+            if '{' in value:
+                value = value.replace("'", '').replace('\n', '').replace(' ', '').replace('},', '}')
+            else:
+                value = value.replace("'", '').replace('\n', '').replace(',', '').replace(' ', '')
+            d[key] = value
+    return d
+
+
+def get_fields(file_path):
+    with open(file_path, 'r') as f:
+        lines = f.readlines()
+        index_list = []
+        num = 0
+        start = 0
+        for line in lines:
+            if '= {' in line:
+                start = num
+            if '}\n' in line:
+                end = num + 1
+                index_list.append((start, end))
+            num += 1
+
+        person_field_dict = tran_list_to_dict(lines[int(index_list[0][0]):int(index_list[0][1])])
+        office_field_dict = tran_list_to_dict(lines[int(index_list[1][0]):int(index_list[1][1])])
+        info_keys_dict = tran_list_to_dict(lines[int(index_list[2][0]):int(index_list[2][1])])
+        url_map_dict = tran_list_to_dict(lines[int(index_list[3][0]):int(index_list[3][1])])
+        body_map_dict = tran_list_to_dict(lines[int(index_list[4][0]):int(index_list[4][1])])
+        detail_url_map_dict = tran_list_to_dict(lines[int(index_list[5][0]):int(index_list[5][1])])
+        detail_body_map_dict = tran_list_to_dict(lines[int(index_list[6][0]):int(index_list[6][1])])
+        result = (
+            person_field_dict, office_field_dict, info_keys_dict, url_map_dict, body_map_dict, detail_url_map_dict,
+            detail_body_map_dict)
+
+        return result
+
+
+def replaces(*rep_map_list, target=None, replace_key=False):
+    for rep_map in rep_map_list:
+        if not isinstance(rep_map, dict):
+            values = ['' for _ in rep_map]
+            rep_map = dict(zip(list(rep_map), values))
+        for k, v in rep_map.items():
+
+            # process target type
+            if type(target).__name__ == 'str' and target != '':
+                target = target.replace(k, v)
+            elif type(target).__name__ == 'list':
+                rep_str = '|'.join(target)
+                target = rep_str.replace(k, v).split('|')
+
+            # target is a dict
+            elif type(target).__name__ == 'dict':
+                new_target = {}
+                for k_, v_ in target.items():
+                    v_ = v_ if v_ else ''
+                    if not replace_key:
+                        target[k_] = v_.replace(k, v)
+                    else:
+                        new_key = k_.replace(k, v)
+                        new_value = v_.replace(k, v)
+                        new_target[new_key] = new_value
+                target = new_target
+
+            elif target is None:
+                raise Exception('target is None')
+
+    return target
