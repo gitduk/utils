@@ -344,7 +344,7 @@ class ParamFactory(object):
 
         self.method = 'POST' if body_str else 'GET'
         self.post_type = 'form' if self.method == 'POST' else ''
-        self.path = ''
+        self.path = self._url.split('?')[0]
 
         self.overwrite = overwrite
         self.update_status = 0
@@ -383,10 +383,7 @@ class ParamFactory(object):
     @property
     def url(self):
         if self.method == 'GET' and '?' in self._url:
-            path = self._url.split('?')[0]
-            return path + '?' + '&'.join([f'{key}={value}' for key, value in self._param_dict.items()])
-        elif self.method == 'GET':
-            raise Exception('FIXME ... GET method with no param')
+            return self.path + '?' + '&'.join([f'{key}={value}' for key, value in self._param_dict.items()])
         else:
             return self._url
 
@@ -477,15 +474,12 @@ class ParamFactory(object):
             self.post_type = 'payload'
             self._param_dict = json.loads(body)
 
-        self.path = self._url
-
     def url_param_to_dict(self, url=None):
         url = url if url else self._url
         if '?' in url:
             self._param_dict = dict([_.split('=', 1) for _ in url.split('?')[-1].split('&')])
-            self.path = url.split('?')[0]
-        else:
-            raise Exception('GET method with no "?"')
+        # else:
+        #     raise Exception('GET method with no "?"')
 
     def trans_to_dict(self, string=None, to=None):
 
@@ -525,6 +519,7 @@ class ParamFactory(object):
 
     def __repr__(self):
         return "url: {}\nparam: {}\nheaders: {}\ncookies: {}\n".format(self.url, self.param, self.header, self.cookie)
+
 
 
 def tran_list_to_dict(L):
