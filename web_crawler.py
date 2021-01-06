@@ -15,26 +15,20 @@ class ParamFactory(object):
     def __init__(self, url, body=None, headers=None, cookies=None, overwrite=True):
         self._url = url
         self._path = self._url.split('?')[0]
-        self._param_str = self._url.split('?')[-1]
+        self._param_str = '' if body or '?' not in self._url else self._url.split('?')[-1]
         self._body_str = '' if body is None else body
         self._header_str = '' if headers is None else headers
         self._cookie_str = '' if cookies is None else cookies
 
-        self._param_dict = {}
-        self._body_dict = {}
-        self._header_dict = {}
-        self._cookie_dict = {}
-        self._cookie_jar = requests.cookies.RequestsCookieJar()
-
         self.method = 'POST' if body else 'GET'
-        self.post_type = 'form' if self.method == 'POST' else ''
-
+        self.post_type = 'form' if self.method == 'POST' and '=' in self._body_str else 'payload'
         self.overwrite = overwrite
 
-        if self._param_str: self.str_to_dict(self._param_str, tag='param')
-        if self._body_str: self.str_to_dict(self._body_str, tag='body')
-        if self._header_str: self.str_to_dict(self._header_str, tag='header')
-        if self._cookie_str: self.str_to_dict(self._cookie_str, tag='cookie')
+        self._param_dict = {} if not self._param_str else self.str_to_dict(self._param_str, tag='param')
+        self._body_dict = {} if not self._body_str else self.str_to_dict(self._body_str, tag='body')
+        self._header_dict = {} if not self._header_str else self.str_to_dict(self._header_str, tag='header')
+        self._cookie_dict = {} if not self._cookie_str else self.str_to_dict(self._cookie_str, tag='cookie')
+        self._cookie_jar = requests.cookies.RequestsCookieJar()
 
     def clear(self, key=None):
         if key == 'param':
@@ -53,8 +47,7 @@ class ParamFactory(object):
 
     @property
     def url(self):
-        self._url = self._path + self.param
-        return self._url
+        return self._path + self.param if self.method == 'GET' else self._url
 
     @property
     def param(self):
@@ -150,6 +143,7 @@ class ParamFactory(object):
         if tag == 'param':
             if '?' in string and '=' in string:
                 self._param_dict = dict([_.split('=', 1) for _ in string.split('?')[-1].split('&')])
+            return self._param_dict
 
         if tag == 'body':
             if '=' in string and '&' in string:
@@ -157,8 +151,8 @@ class ParamFactory(object):
             elif '=' in string:
                 self._body_dict = dict([string.split('=')])
             elif ':' in string:
-                self.post_type = 'payload'
                 self._body_dict = json.loads(string)
+            return self._body_dict
 
         if tag == 'header' or tag == 'cookie':
             split_params = ['\n', ':'] if tag == 'header' else [';', '=']
@@ -179,6 +173,10 @@ class ParamFactory(object):
 
             if tag == 'header': self._header_dict = target_dict
             if tag == 'cookie': self._cookie_dict = target_dict
+            return target_dict
 
     def __repr__(self):
-        return "url: {}\nparam: {}\nheaders: {}\ncookies: {}\n".format(self.url, self.body, self.headers, self.cookies)
+        return "url: {} ({}, {})\nparam: {}\nbody: {}\nheaders: {}\ncookies: {}\n".format(self.url, self.method,
+                                                                                         self.post_type, self.param,
+                                                                                         self.body, self.headers,
+                                                                                         self.cookies)
