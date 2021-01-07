@@ -1,8 +1,7 @@
 import json
-import re
 import logging
-from cn12348.tools.data_factory import print_table
-
+import re
+from utils.data_factory import DictFactory, Replacer
 import requests
 
 logger = logging.getLogger(__name__)
@@ -44,6 +43,8 @@ class ParamFactory(object):
         self._header_dict = self.str_to_dict(self._header_str, tag='header') if self._header_str else {}
         self._cookie_dict = self.str_to_dict(self._cookie_str, tag='cookie') if self._cookie_str else {}
         self._cookie_jar_dict = self.cookie_jar._cookies
+
+        self.print_table = DictFactory.print_table
 
     def clear(self, key=None):
         if key == 'param':
@@ -273,19 +274,35 @@ class ParamFactory(object):
     def arg_table(self, tag=None):
         if tag is None:
             for key, value in self.dict_args.items():
-                print_table(value, title=key)
+                self.print_table(value, title=key)
                 print('\n')
         elif tag == 'cookie_jar':
-            print_table(self.cookie_jar, title=tag)
+            self.print_table(self.cookie_jar, title=tag)
         else:
-            print_table(self.dict_args.get(tag), title=tag)
+            self.print_table(self.dict_args.get(tag), title=tag)
 
     def __repr__(self):
         repr_list = []
         for key, value in self.dict_args.items():
-            lines = print_table(value, title=key, no_print=True)
+            lines = self.print_table(value, title=key, no_print=True)
             table = ''.join(lines)
             repr_list.append(table)
 
         repr_string = '\n'.join(repr_list)
         return repr_string
+
+
+url = 'http://www.xiladaili.com/gaoni/'
+headers = """
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9
+Accept-Encoding: gzip, deflate
+Accept-Language: zh-CN,zh;q=0.9,en;q=0.8
+Connection: keep-alive
+Host: www.xiladaili.com
+Upgrade-Insecure-Requests: 1
+User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.88 Safari/537.36
+"""
+
+ctor = ParamFactory(url, headers=headers)
+resp = requests.get(url)
+...
