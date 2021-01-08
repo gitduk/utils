@@ -1,7 +1,7 @@
 import json
 import logging
 import re
-from utils.data_factory import DictFactory, Replacer
+from data_factory import DictFactory, Printer
 import requests
 
 logger = logging.getLogger(__name__)
@@ -13,7 +13,7 @@ class ParamFactory(object):
     """
 
     # todo add cookie jar dict
-    def __init__(self, url, body=None, headers=None, cookies=None, overwrite=True):
+    def __init__(self, url, body=None, header=None, cookie=None, overwrite=True, fmt=True):
         self._url = url
         self._path_dict = {}
         self._param_dict = {}
@@ -22,12 +22,14 @@ class ParamFactory(object):
         self._cookie_dict = {}
         self.overwrite = overwrite
         self._cookie_jar = requests.cookies.RequestsCookieJar()
+        self.print_table = DictFactory.print_table
+        self.fmt = fmt
 
         self._path_str = self._url.split('?')[0]
         self._param_str = '' if body or '?' not in self._url else self._url.split('?')[-1]
         self._body_str = '' if body is None else body
-        self._header_str = '' if headers is None else headers
-        self._cookie_str = '' if cookies is None else cookies
+        self._header_str = '' if header is None else header
+        self._cookie_str = '' if cookie is None else cookie
 
         self.method = 'POST' if body else 'GET'
         if self.method == 'POST' and '=' in self._body_str:
@@ -44,8 +46,6 @@ class ParamFactory(object):
         self._cookie_dict = self.str_to_dict(self._cookie_str, tag='cookie') if self._cookie_str else {}
         self._cookie_jar_dict = self.cookie_jar._cookies
 
-        self.print_table = DictFactory.print_table
-
     def clear(self, key=None):
         if key == 'param':
             self._param_dict.clear()
@@ -61,41 +61,36 @@ class ParamFactory(object):
             self._cookie_dict.clear()
             self._cookie_jar.clear()
 
+    # --------------------------------------------------------------------------------- property
     @property
     def url(self):
-        return self.path + self.param if self.method == 'GET' else self._url
+        if self.fmt:
+            return self.path + self.param if self.method == 'GET' else self._url
+        else:
+            return {'path': self.path, 'param': self.param} if self.method == 'GET' else self.path
 
     @property
     def path(self):
         protocol = self._path_dict.get('protocol')
         domain = self._path_dict.get('domain')
-        sub_path = '/'.join([_ for _ in self._path_dict.values() if _ not in ['protocol', 'domain']])
-        return f'{protocol}://{domain}/{sub_path}'
-
-    @property
-    def path_dict(self):
-        return self._path_dict
+        sub_path = '/'.join([value for key, value in self._path_dict.items() if key not in ['protocol', 'domain']])
+        return f'{protocol}://{domain}/{sub_path}' if self.fmt else self._path_dict
 
     @property
     def param(self):
-        return '?' + '&'.join([f'{key}={value}' for key, value in self._param_dict.items()])
-
-    @property
-    def param_dict(self):
-        return self._param_dict
+        return '?' + '&'.join(
+            [f'{key}={value}' for key, value in self._param_dict.items()]) if self.fmt else self._param_dict
 
     @property
     def body(self):
-        if self.post_type == 'form':
+        if not self.fmt:
+            return self._body_dict
+        elif self.post_type == 'form':
             return '&'.join([f'{key}={value}' for key, value in self._body_dict.items()])
         elif self.post_type == 'payload':
             return json.dumps(self._body_dict)
         else:
             return ''
-
-    @property
-    def body_dict(self):
-        return self._body_dict
 
     @property
     def headers(self):
@@ -114,14 +109,78 @@ class ParamFactory(object):
         return self._cookie_jar
 
     @property
-    def cookie_jar_dict(self):
-        return self._cookie_jar_dict if self._cookie_jar_dict else ''
+    def string_args(self):
+        return {
+            'url': self.url,
+            'method': self.method,
+            'post_type': self.post_type,
+            'body': self.body,
+        }
+
+    @property
+    def dict_args(self):
+        return {
+            'string args': self.string_args,
+            'cookies': self.cookies,
+            'headers': self.headers,
+        }
+
+    @property
+    def key_dict(self):
+        return {
+            'path': list(self._path_dict.keys()),
+            'param': list(self._param_dict.keys()),
+            'body': list(self._body_dict.keys()),
+            'header': list(self._header_dict.keys()),
+            'cookie': list(self._cookie_dict.keys())
+        }
+
+    # --------------------------------------------------------------------------------- setter
+    @path.setter
+    def path(self, path):
+        if isinstance(path, dict):
+            self._path_dict = path
+        else:
+            raise Exception('Type error ... type of path is not dict')
+
+    @param.setter
+    def param(self, params):
+        if isinstance(params, dict):
+            self._param_dict = params
+        else:
+            raise Exception('Type error ... type of params is not dict')
+
+    @body.setter
+    def body(self, body):
+        if isinstance(body, dict):
+            self._body_dict = body
+        else:
+            raise Exception('Type error ... type of body is not dict')
+
+    @headers.setter
+    def headers(self, header):
+        if isinstance(header, dict):
+            self._header_dict = header
+        else:
+            raise Exception('Type error ... type of header is not dict')
+
+    @cookies.setter
+    def cookies(self, cookie):
+        if isinstance(cookie, dict):
+            self._cookie_dict = cookie
+        else:
+            raise Exception('Type error ... type of cookie is not dict')
+
+    # --------------------------------------------------------------------------------- core functions
 
     def cookie_setter(self, string):
         """ build cookie dict use set-cookie field
 
         string: set-cookie string
         """
+        if not string:
+            raise Exception('string is None')
+        if isinstance(string, bytes): string = string.decode('utf-8')
         string = re.search('(.*?); Path', string)
         if string:
             string = string.group(1)
@@ -134,41 +193,8 @@ class ParamFactory(object):
         else:
             print(f'Set-Cookie filed is None')
 
-    def _update(self, key, value, tag=None):
-        if not tag:
-            for tag_name, key_list in self.key_dict.items():
-                if key in key_list:
-                    tag = tag_name
-                    break
-
-        if tag == 'param':
-            self._param_dict[key] = value
-        elif tag == 'body':
-            self._body_dict[key] = value
-        elif tag == 'header':
-            self._header_dict[key] = value
-        elif tag == 'cookie':
-            self._cookie_dict[key] = value
-        else:
-            for cookie_jar in iter(self.cookie_jar):
-                if cookie_jar.name == tag:
-                    # TODO ...
-                    self._update_cookie_jar(key, value, cookie_jar)
-                else:
-                    continue
-
     def _update_cookie_jar(self, key, value, cookie_jar):
         ...
-
-    @property
-    def key_dict(self):
-        return {
-            'path': list(self._path_dict.keys()),
-            'param': list(self._param_dict.keys()),
-            'body': list(self._body_dict.keys()),
-            'header': list(self._header_dict.keys()),
-            'cookie': list(self._cookie_dict.keys())
-        }
 
     def update(self, *args, tag=None):
         """ update tag use args
@@ -198,6 +224,29 @@ class ParamFactory(object):
             for key, value in zip(args[0], args[1]):
                 value = args[2].get(value)
                 self._update(key, value, tag)
+
+    def _update(self, key, value, tag=None):
+        if not tag:
+            for tag_name, key_list in self.key_dict.items():
+                if key in key_list:
+                    tag = tag_name
+                    break
+
+        if tag == 'param':
+            self._param_dict[key] = value
+        elif tag == 'body':
+            self._body_dict[key] = value
+        elif tag == 'header':
+            self._header_dict[key] = value
+        elif tag == 'cookie':
+            self._cookie_dict[key] = value
+        else:
+            for cookie_jar in iter(self.cookie_jar):
+                if cookie_jar.name == tag:
+                    # TODO ...
+                    self._update_cookie_jar(key, value, cookie_jar)
+                else:
+                    continue
 
     def str_to_dict(self, string, tag=None):
         """ translate string to dict
@@ -252,25 +301,7 @@ class ParamFactory(object):
             if tag == 'cookie': self._cookie_dict = target_dict
             return target_dict
 
-    @property
-    def string_args(self):
-        return {
-            'url': self.url,
-            'path': self.path,
-            'method': self.method,
-            'post_type': self.post_type,
-            'param': self.param,
-            'body': self.body,
-        }
-
-    @property
-    def dict_args(self):
-        return {
-            'string args': self.string_args,
-            'headers': self.headers,
-            'cookies': self.cookies,
-        }
-
+    # --------------------------------------------------------------------------------- printer
     def arg_table(self, tag=None):
         if tag is None:
             for key, value in self.dict_args.items():
@@ -282,27 +313,20 @@ class ParamFactory(object):
             self.print_table(self.dict_args.get(tag), title=tag)
 
     def __repr__(self):
-        repr_list = []
-        for key, value in self.dict_args.items():
-            lines = self.print_table(value, title=key, no_print=True)
-            table = ''.join(lines)
-            repr_list.append(table)
+        # repr_list = []
+        # for key, value in self.dict_args.items():
+        #     lines = self.print_table(value, title=key, no_print=True)
+        #     table = ''.join(lines)
+        #     repr_list.append(table)
+        #
+        # repr_string = ''.join(repr_list)
+        return ''
 
-        repr_string = '\n'.join(repr_list)
-        return repr_string
 
+url = 'http://hl.12348.gov.cn/gfpt/public/gfpt/ggflfw/wsbs/ls/listlsjg'
+body = 'type=1&countSize=4&startSize=1&dqPage=1&dqbm=&ywfw=&startNx=&endNx=&jgmc=%E8%AF%B7%E8%BE%93%E5%85%A5%E5%85%B3%E9%94%AE%E8%AF%8D'
+ctor = ParamFactory(url, body=body)
 
-url = 'http://www.xiladaili.com/gaoni/'
-headers = """
-Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9
-Accept-Encoding: gzip, deflate
-Accept-Language: zh-CN,zh;q=0.9,en;q=0.8
-Connection: keep-alive
-Host: www.xiladaili.com
-Upgrade-Insecure-Requests: 1
-User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.88 Safari/537.36
-"""
-
-ctor = ParamFactory(url, headers=headers)
-resp = requests.get(url)
+resp = requests.post(url, data=ctor.body)
+Printer(resp)
 ...
