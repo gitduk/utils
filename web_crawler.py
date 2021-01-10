@@ -1,8 +1,8 @@
 import json
 import logging
 import re
-from data_factory import DictFactory, Printer
 import requests
+from utils.data_factory import DictFactory, DataGroup, Printer
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +28,7 @@ class ParamFactory(object):
         self._path_str = self._url.split('?')[0]
         self._param_str = '' if body or '?' not in self._url else self._url.split('?')[-1]
         self._body_str = '' if body is None else body
-        self._header_str = '' if header is None else header
+        self._header_str = header if header else 'User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.88 Safari/537.36'
         self._cookie_str = '' if cookie is None else cookie
 
         self.method = 'POST' if body else 'GET'
@@ -78,8 +78,9 @@ class ParamFactory(object):
 
     @property
     def param(self):
-        return '?' + '&'.join(
-            [f'{key}={value}' for key, value in self._param_dict.items()]) if self.fmt else self._param_dict
+        split_char = '?' if self._param_dict else ''
+        return split_char + '&'.join([f'{key}={value}' for key, value in self._param_dict.items()]) \
+            if self.fmt else self._param_dict
 
     @property
     def body(self):
@@ -107,23 +108,6 @@ class ParamFactory(object):
         else:
             self._cookie_jar = requests.utils.cookiejar_from_dict(self._cookie_dict, self._cookie_jar, self.overwrite)
         return self._cookie_jar
-
-    @property
-    def string_args(self):
-        return {
-            'url': self.url,
-            'method': self.method,
-            'post_type': self.post_type,
-            'body': self.body,
-        }
-
-    @property
-    def dict_args(self):
-        return {
-            'string args': self.string_args,
-            'cookies': self.cookies,
-            'headers': self.headers,
-        }
 
     @property
     def key_dict(self):
@@ -301,32 +285,24 @@ class ParamFactory(object):
             if tag == 'cookie': self._cookie_dict = target_dict
             return target_dict
 
-    # --------------------------------------------------------------------------------- printer
-    def arg_table(self, tag=None):
-        if tag is None:
-            for key, value in self.dict_args.items():
-                self.print_table(value, title=key)
-                print('\n')
-        elif tag == 'cookie_jar':
-            self.print_table(self.cookie_jar, title=tag)
-        else:
-            self.print_table(self.dict_args.get(tag), title=tag)
+    def preview(self, tag=None):
+        d_group = DataGroup(name='Params')
+        d_group.add_info('url', self.url)
+        d_group.add_info('param', self.param)
+        d_group.add_info('body', self.body)
+
+        preview_dict = {'headers': self.headers, 'cookies': self.cookies}
+        preview_list = ['headers', 'cookies'] if not tag else [tag]
+
+        for key, value in preview_dict.items():
+            if key in preview_list:
+                d_group.add_data(key, value)
+            else:
+                continue
+
+        printer = Printer()
+        return printer.parse_data_group(d_group)
 
     def __repr__(self):
-        # repr_list = []
-        # for key, value in self.dict_args.items():
-        #     lines = self.print_table(value, title=key, no_print=True)
-        #     table = ''.join(lines)
-        #     repr_list.append(table)
-        #
-        # repr_string = ''.join(repr_list)
-        return ''
-
-
-url = 'http://hl.12348.gov.cn/gfpt/public/gfpt/ggflfw/wsbs/ls/listlsjg'
-body = 'type=1&countSize=4&startSize=1&dqPage=1&dqbm=&ywfw=&startNx=&endNx=&jgmc=%E8%AF%B7%E8%BE%93%E5%85%A5%E5%85%B3%E9%94%AE%E8%AF%8D'
-ctor = ParamFactory(url, body=body)
-
-resp = requests.post(url, data=ctor.body)
-Printer(resp)
-...
+        lines = self.preview()
+        return '\n'.join(lines)
