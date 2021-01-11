@@ -1,20 +1,21 @@
+from copy import deepcopy
+
 import requests
 
-
-# import scrapy
 
 class Replacer(object):
     """ change or replace data from string, list or dict
     """
 
-    def __init__(self, *rules, data=None, replace_key=False, mode='replace', mode_dtype='str'):
-        self.rules = rules if data else rules[:-1]
-        self._data = data if data else rules[-1]
+    def __init__(self, *rules, data=None, replace_key=False, mode='replace', mode_dtype=None):
+        self.rules = rules
+        self._data = deepcopy(data)
         self.current_rule = None
         self.replace_key = replace_key
         self.mode = mode
         self.mode_dtype = mode_dtype
         self._search_result = {'str': [], 'list': [], 'dict': [], 'int': [], 'float': []}
+        self.count = [0, 0, 0]
         self.police()
         self.start()
 
@@ -24,31 +25,51 @@ class Replacer(object):
 
     @property
     def search_result(self):
-        if len(self._search_result.values()) == 1:
-            # TODO ...
-            return ...
-        return self._search_result
+        result = [_ for _ in self._search_result.values() if _]
+        if len(result) == 1:
+            return result[0][0] if len(result[0]) == 1 else result[0]
+        else:
+            return self._search_result
 
     def police(self):
-        if self.mode not in ['replace', 'update', 'search', 'delete']:
-            raise Exception(f'Mode Name Error ... valid mode: {self.mode}')
+        self.rules = self.rules if self._data else self.rules[:-1]
+        self._data = self._data if self._data else self.rules[-1]
 
+        # check rule
+        for r in self.rules:
+            if self.mode == 'replace':
+                if isinstance(r, (int, float)): raise Exception('Rule Type Error ... rule must be str in replace mode')
+            elif self.mode == 'update':
+                if not isinstance(r, dict): raise Exception('Rule Type Error ... rule must be dict in update mode')
+
+        # check other options
         dtype = type(self._data).__name__
         if dtype not in ['str', 'list', 'dict']:
             raise Exception(f'Data Type Error ... valid data type: {dtype}')
 
-    def start(self):
-        for rule in self.rules:
-            if not isinstance(rule, dict) and self.mode == 'replace':
-                values = ['' for _ in rule]
-                rule = dict(zip(list(rule), values))
+        if self.mode not in ['replace', 'update', 'search', 'delete']:
+            raise Exception(f'Mode Name Error ... valid mode: {self.mode}')
 
-            if not isinstance(rule, dict) and self.mode in ['search', 'delete']:
-                if isinstance(rule, str):
-                    rule = {rule: rule}
-                if isinstance(rule, list):
-                    rule = zip(rule, rule)
+        self.mode_dtype = self.mode_dtype if self.mode_dtype else ['str', 'list', 'dict', 'int', 'float']
+        if isinstance(self.mode_dtype, str):
+            self.mode_dtype = [self.mode_dtype]
 
+    def start(self, rules=None):
+        rules = rules if rules else self.rules
+        for rule in rules:
+            if not isinstance(rule, dict):
+                if self.mode == 'replace':
+                    values = ['' for _ in rule]
+                    rule = dict(zip(list(rule), values))
+
+                else:
+                    if isinstance(rule, str):
+                        rule = {rule: rule}
+                    if isinstance(rule, list):
+                        self.start(rule)
+                        continue
+
+            self.count[0] += 1
             self.current_rule = rule
             self._data = self.data_replacer()
 
@@ -58,58 +79,58 @@ class Replacer(object):
         dtype = type(data).__name__
 
         if isinstance(data, (list, str)):  data = dict(zip(list(data), list(data)))
-
         for r_key, r_value in self.current_rule.items():
-            new_data = {}
+            self.count[1] += 1
             for key, value in data.items():
-                if self.replace_key and not isinstance(r_value, (int, float)):
-                    key = key.replace(r_key, r_value)
+                self.count[2] += 1
+
+                if type(value).__name__ not in self.mode_dtype:
+                    continue
 
                 if self.mode == 'replace':
+                    # replace key
+                    if self.replace_key and not isinstance(r_value, (int, float)):
+                        key, value = key.replace(r_key, r_value), data.pop(key)
+                        data[key] = value
+
                     if isinstance(value, str):
-                        new_data[key] = value.replace(r_key, r_value)
-                    elif isinstance(value, (int, float)) and isinstance(r_value, (int, float)):
-                        new_data[key] = r_value
+                        data[key] = value.replace(r_key, r_value)
+                    elif isinstance(value, (int, float)):
+                        data[key] = r_value if isinstance(r_value, (int, float)) else value
                     elif isinstance(value, (list, dict)):
-                        new_data[key] = self.data_replacer(value)
+                        data[key] = self.data_replacer(value)
                     else:
-                        new_data[key] = value
+                        raise Exception('Value Type Error ... value type is unknown')
 
                 elif self.mode == 'search':
                     if key == r_key:
                         self._search_result.get(type(value).__name__).append(value)
-                    if isinstance(value, dict):
+                    elif isinstance(value, dict):
                         self.data_replacer(value)
 
                 elif self.mode == 'update':
                     if key == r_key:
-                        new_data[key] = r_value
+                        data[key] = r_value
                     elif isinstance(value, (list, dict)):
-                        new_data[key] = self.data_replacer(value)
-                    else:
-                        new_data[key] = value
+                        data[key] = self.data_replacer(value)
 
                 elif self.mode == 'delete':
-                    if key == r_key and type(value).__name__ == self.mode_dtype:
-                        continue
-                    else:
-                        new_data[key] = value
-
-            data = new_data if self.mode != 'search' else data
+                    if key == r_key:
+                        del data[key]
 
         return self.dtype_translater(data, dtype)
 
     @staticmethod
     def dtype_translater(data, dtype):
-
         if dtype == 'list':
-            data = list(data.values())
+            return list(data.values())
         elif dtype == 'str':
-            data = ''.join(list(data.values()))
-
-        return data
+            return ''.join(list(data.values()))
+        else:
+            return data
 
     def __repr__(self):
+        print(f'count: {self.count}')
         return repr(self.data) if self.mode != 'search' else repr(self.search_result)
 
 
@@ -159,7 +180,7 @@ class Printer(object):
     @staticmethod
     def parse_data_group(data_group):
         bar_length = data_group.bar_length
-        head = f'{"=" * (bar_length + len(data_group.name))} {data_group.name}'
+        head = f'{"+" * (bar_length + len(data_group.name))} {data_group.name}'
         info = data_group.info
         data_pool = data_group.data_pool
         lines = [head]
@@ -293,27 +314,12 @@ class DictFactory(object):
                     print(line)
 
 
-def replacer(*rules, data=None, replace_key=False, mode='replace', mode_dtype='str'):
+def replacer(*rules, data=None, replace_key=False, mode='replace', mode_dtype=None, count=False):
     result = Replacer(*rules, data=data, replace_key=replace_key, mode=mode, mode_dtype=mode_dtype)
-    return result.data if mode!='search' else result.search_result
+    if count:
+        print(f'rule count: {result.count}')
+    return result.data if mode != 'search' else result.search_result
 
 
 def printer(data):
     return Printer(data)
-
-
-data = {
-    'name': 'kaige',
-    'age': 25,
-    'ls': [1, 2, 3, 4, 5, 6],
-    'jn': {
-        'sql': ['1', '2', '3'],
-        'linux': ['6', '7', '8'],
-        'python': [9, 10, 11],
-        'others': {
-            'no': 0
-        }
-    }
-}
-
-print(replacer('linux', data=data, mode='search'))

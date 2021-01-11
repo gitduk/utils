@@ -2,7 +2,8 @@ import json
 import logging
 import re
 import requests
-from utils.data_factory import DictFactory, DataGroup, Printer
+from requests.cookies import merge_cookies
+from cn12348.utils.data_factory import DictFactory, DataGroup, Printer
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,7 @@ class ParamFactory(object):
         self._cookie_jar = requests.cookies.RequestsCookieJar()
         self.print_table = DictFactory.print_table
         self.fmt = fmt
+        self.others = None
 
         self._path_str = self._url.split('?')[0]
         self._param_str = '' if body or '?' not in self._url else self._url.split('?')[-1]
@@ -116,7 +118,7 @@ class ParamFactory(object):
             'param': list(self._param_dict.keys()),
             'body': list(self._body_dict.keys()),
             'header': list(self._header_dict.keys()),
-            'cookie': list(self._cookie_dict.keys())
+            'cookie': list(self._cookie_dict.keys()),
         }
 
     # --------------------------------------------------------------------------------- setter
@@ -163,9 +165,13 @@ class ParamFactory(object):
         string: set-cookie string
         """
         if not string:
+            return
+        elif string and not isinstance(string, str):
             raise Exception('string is None')
+
         if isinstance(string, bytes): string = string.decode('utf-8')
         string = re.search('(.*?); Path', string)
+
         if string:
             string = string.group(1)
             for cookie in string.split(';'):
@@ -176,9 +182,6 @@ class ParamFactory(object):
                     continue
         else:
             print(f'Set-Cookie filed is None')
-
-    def _update_cookie_jar(self, key, value, cookie_jar):
-        ...
 
     def update(self, *args, tag=None):
         """ update tag use args
@@ -224,13 +227,6 @@ class ParamFactory(object):
             self._header_dict[key] = value
         elif tag == 'cookie':
             self._cookie_dict[key] = value
-        else:
-            for cookie_jar in iter(self.cookie_jar):
-                if cookie_jar.name == tag:
-                    # TODO ...
-                    self._update_cookie_jar(key, value, cookie_jar)
-                else:
-                    continue
 
     def str_to_dict(self, string, tag=None):
         """ translate string to dict
