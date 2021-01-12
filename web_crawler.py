@@ -242,6 +242,8 @@ class ParamFactory(object):
             self._header_dict[key] = value
         elif tag == 'cookie':
             self._cookie_dict[key] = value
+        elif tag == 'path':
+            self._path_dict[key] = value
 
     def str_to_dict(self, string, tag=None):
         """ translate string to dict
@@ -268,7 +270,7 @@ class ParamFactory(object):
 
             self._path_dict['protocol'] = protocol
             self._path_dict['domain'] = domain
-            self._path_dict = {**self._path_dict, **dict(zip(path_list, path_list))}
+            self._path_dict = {**self._path_dict, **dict(zip([str(i + 1) for i in range(len(path_list))], path_list))}
             return self._path_dict
 
         if tag == 'param':
@@ -341,11 +343,3 @@ class ParamFactory(object):
     def __repr__(self):
         lines = self.preview()
         return '\n'.join(lines)
-
-
-url = 'https://www.baidu.com?name=kaige'
-url2 = 'https://www.baidu.com?name=dongkai'
-ctor = ParamFactory(url)
-print(ctor)
-ctor.url = url2
-print(ctor)
