@@ -3,7 +3,7 @@ import logging
 import re
 import requests
 from requests.cookies import merge_cookies
-from cn12348.utils.data_factory import DictFactory, DataGroup, Printer
+from utils.data_factory import Printer, DataGroup
 
 logger = logging.getLogger(__name__)
 
@@ -23,13 +23,12 @@ class ParamFactory(object):
         self._cookie_dict = {}
         self.overwrite = overwrite
         self._cookie_jar = requests.cookies.RequestsCookieJar()
-        self.print_table = DictFactory.print_table
         self.fmt = fmt
         self.others = None
 
         self._path_str = self._url.split('?')[0]
-        self._param_str = '' if body or '?' not in self._url else self._url.split('?')[-1]
         self._body_str = '' if body is None else body
+        self._param_str = '' if body or '?' not in self._url else self._url.split('?')[-1]
         self._header_str = header if header else 'User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.88 Safari/537.36'
         self._cookie_str = '' if cookie is None else cookie
 
@@ -41,15 +40,18 @@ class ParamFactory(object):
         else:
             self.post_type = ''
 
+        self._cookie_jar_dict = self.cookie_jar._cookies
+
         self._path_dict = self.str_to_dict(self._path_str, tag='path') if self._path_str else {}
         self._param_dict = self.str_to_dict(self._param_str, tag='param') if self._param_str else {}
         self._body_dict = self.str_to_dict(self._body_str, tag='body') if self._body_str else {}
         self._header_dict = self.str_to_dict(self._header_str, tag='header') if self._header_str else {}
         self._cookie_dict = self.str_to_dict(self._cookie_str, tag='cookie') if self._cookie_str else {}
-        self._cookie_jar_dict = self.cookie_jar._cookies
 
     def clear(self, key=None):
-        if key == 'param':
+        if key == 'path':
+            self._path_dict.clear()
+        elif key == 'param':
             self._param_dict.clear()
         elif key == 'header':
             self._header_dict.clear()
@@ -58,6 +60,7 @@ class ParamFactory(object):
         elif key == 'cookie_jar' and self._cookie_jar:
             self._cookie_jar.clear()
         elif key is None:
+            self._path_dict.clear()
             self._param_dict.clear()
             self._header_dict.clear()
             self._cookie_dict.clear()
@@ -122,6 +125,14 @@ class ParamFactory(object):
         }
 
     # --------------------------------------------------------------------------------- setter
+    @url.setter
+    def url(self, url):
+        self._url = url
+        self._path_str = self._url.split('?')[0]
+        self._param_str = '' if self.body or '?' not in self._url else self._url.split('?')[-1]
+        self._path_dict = self.str_to_dict(self._path_str, tag='path')
+        self._param_dict = self.str_to_dict(self._param_str, tag='param')
+
     @path.setter
     def path(self, path):
         if isinstance(path, dict):
@@ -302,3 +313,11 @@ class ParamFactory(object):
     def __repr__(self):
         lines = self.preview()
         return '\n'.join(lines)
+
+
+url = 'https://www.baidu.com?name=kaige'
+url2 = 'https://www.baidu.com?name=dongkai'
+ctor = ParamFactory(url)
+print(ctor)
+ctor.url = url2
+print(ctor)
