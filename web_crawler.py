@@ -27,10 +27,10 @@ class ParamFactory(object):
         self.others = None
 
         self._path_str = self._url.split('?')[0]
-        self._body_str = '' if body is None else body
         self._param_str = '' if body or '?' not in self._url else self._url.split('?')[-1]
-        self._header_str = header if header else 'User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.88 Safari/537.36'
-        self._cookie_str = '' if cookie is None else cookie
+        self._body_str = body or ''
+        self._header_str = header or 'User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.88 Safari/537.36'
+        self._cookie_str = cookie or ''
 
         self.method = 'POST' if body else 'GET'
         if self.method == 'POST' and '=' in self._body_str:
@@ -42,11 +42,11 @@ class ParamFactory(object):
 
         self._cookie_jar_dict = self.cookie_jar._cookies
 
-        self._path_dict = self.str_to_dict(self._path_str, tag='path') if self._path_str else {}
-        self._param_dict = self.str_to_dict(self._param_str, tag='param') if self._param_str else {}
-        self._body_dict = self.str_to_dict(self._body_str, tag='body') if self._body_str else {}
-        self._header_dict = self.str_to_dict(self._header_str, tag='header') if self._header_str else {}
-        self._cookie_dict = self.str_to_dict(self._cookie_str, tag='cookie') if self._cookie_str else {}
+        self._path_dict = self.str_to_dict(self._url, tag='path') or {}
+        self._param_dict = self.str_to_dict(self._url, tag='param') or {}
+        self._body_dict = self.str_to_dict(self._body_str, tag='body') or {}
+        self._header_dict = self.str_to_dict(self._header_str, tag='header') or {}
+        self._cookie_dict = self.str_to_dict(self._cookie_str, tag='cookie') or {}
 
     def clear(self, key=None):
         if key == 'path':
@@ -70,7 +70,8 @@ class ParamFactory(object):
     @property
     def url(self):
         if self.fmt:
-            return self.path + self.param if self.method == 'GET' else self._url
+            path = self.path[:-1] if self.path.endswith('/') else self.path
+            return path + self.param if self.method == 'GET' else self._url
         else:
             return {'path': self.path, 'param': self.param} if self.method == 'GET' else self.path
 
@@ -84,8 +85,8 @@ class ParamFactory(object):
     @property
     def param(self):
         split_char = '?' if self._param_dict else ''
-        return split_char + '&'.join([f'{key}={value}' for key, value in self._param_dict.items()]) \
-            if self.fmt else self._param_dict
+        param_str = '&'.join([f'{key}={value}' for key, value in self._param_dict.items()]) if self._param_dict else ''
+        return split_char + param_str if self.fmt else self._param_dict
 
     @property
     def body(self):
@@ -127,23 +128,26 @@ class ParamFactory(object):
     # --------------------------------------------------------------------------------- setter
     @url.setter
     def url(self, url):
-        self._url = url
-        self._path_str = self._url.split('?')[0]
-        self._param_str = '' if self.body or '?' not in self._url else self._url.split('?')[-1]
-        self._path_dict = self.str_to_dict(self._path_str, tag='path')
-        self._param_dict = self.str_to_dict(self._param_str, tag='param')
+        self._path_dict = self.str_to_dict(url, tag='path')
+        self._param_dict = self.str_to_dict(url, tag='param')
+
+        if self.headers.get('Host'): self.update('Host', self._path_dict.get('domain'), tag='header')
 
     @path.setter
     def path(self, path):
         if isinstance(path, dict):
             self._path_dict = path
+        elif isinstance(path, str):
+            self._path_dict = self.str_to_dict(path, tag='path')
         else:
-            raise Exception('Type error ... type of path is not dict')
+            raise Exception('Type error ... type of path is not dict or str')
 
     @param.setter
     def param(self, params):
         if isinstance(params, dict):
             self._param_dict = params
+        elif isinstance(params, str):
+            self._param_dict = self.str_to_dict(params, tag='param')
         else:
             raise Exception('Type error ... type of params is not dict')
 
@@ -247,19 +251,43 @@ class ParamFactory(object):
         rtype: dict
         """
 
+        if not string: return None
+        if tag == 'path' and self._path_dict: self._path_dict.clear()
+        if tag == 'param' and self._param_dict: self._param_dict.clear()
+        if tag == 'header' and self._header_dict: self._header_dict.clear()
+        if tag == 'cookie' and self._cookie_dict: self._cookie_dict.clear()
+
         string = string.strip()
 
         if tag == 'path' and '://' in string:
-            protocol = self._path_str.split('://', 1)[0]
-            domain = self._path_str.split('://', 1)[1].split('/')[0]
-            path_list = self._path_str.split('://', 1)[1].split('/')[1:]
+            if '?' in string: string = string.split('?')[0]
+
+            protocol = string.split('://', 1)[0]
+            domain = string.split('://', 1)[1].split('/')[0]
+            path_list = string.split('://', 1)[1].split('/')[1:]
+
             self._path_dict['protocol'] = protocol
             self._path_dict['domain'] = domain
             self._path_dict = {**self._path_dict, **dict(zip(path_list, path_list))}
             return self._path_dict
 
-        if tag == 'param' and '=' in string:
-            self._param_dict = dict([_.split('=', 1) for _ in string.split('&')])
+        if tag == 'param':
+            if self.body: return
+
+            # sting : 'https://...?...'
+            if '?' in string:
+                if '=' in string:
+                    string = string.split('?')[-1]
+                    self._param_dict = dict([_.split('=', 1) for _ in string.split('&')])
+                else:
+                    self._param_dict = dict([(string, string) for _ in string.split('&')])
+
+            # sting : 'name=...'
+            elif '=' in string:
+                self._param_dict = dict([_.split('=', 1) for _ in string.split('&')])
+            else:
+                self._param_dict = {}
+
             return self._param_dict
 
         if tag == 'body':
