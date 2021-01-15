@@ -3,7 +3,7 @@ import logging
 import re
 import requests
 from requests.cookies import merge_cookies
-from utils.data_factory import Printer, DataGroup
+from cn12348.utils.data_factory import Printer, DataGroup
 
 logger = logging.getLogger(__name__)
 
@@ -101,11 +101,11 @@ class ParamFactory(object):
 
     @property
     def headers(self):
-        return self._header_dict if self._header_dict else ''
+        return self._header_dict if self._header_dict else {}
 
     @property
     def cookies(self):
-        return self._cookie_dict if self._cookie_dict else ''
+        return self._cookie_dict if self._cookie_dict else {}
 
     @property
     def cookie_jar(self):
@@ -280,7 +280,10 @@ class ParamFactory(object):
             if '?' in string:
                 if '=' in string:
                     string = string.split('?')[-1]
-                    self._param_dict = dict([_.split('=', 1) for _ in string.split('&')])
+                    self._param_dict = dict(
+                        [_.split('=', 1) for _ in string.split('&') if '=' in _ and not _.endswith('=')])
+                    self._param_dict = {**self._param_dict, **dict([(_.strip('='), '') for _ in string.split('&')
+                                                                    if _.endswith('=') or '=' not in _])}
                 else:
                     self._param_dict = dict([(string, string) for _ in string.split('&')])
 

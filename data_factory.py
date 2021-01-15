@@ -8,8 +8,8 @@ class Replacer(object):
     """
 
     def __init__(self, *rules, data=None, replace_key=False, mode='replace', mode_dtype=None):
-        self.rules = rules
-        self._data = deepcopy(data)
+        self.rules = rules if data else rules[:-1]
+        self._data = deepcopy(data) if data else rules[-1]
         self.current_rule = None
         self.replace_key = replace_key
         self.mode = mode
@@ -57,21 +57,22 @@ class Replacer(object):
     def start(self, rules=None):
         rules = rules if rules else self.rules
         for rule in rules:
-            if not isinstance(rule, dict):
-                if self.mode == 'replace':
-                    values = ['' for _ in rule]
-                    rule = dict(zip(list(rule), values))
-
-                else:
-                    if isinstance(rule, str):
-                        rule = {rule: rule}
-                    if isinstance(rule, list):
-                        self.start(rule)
-                        continue
-
             self.count[0] += 1
-            self.current_rule = rule
+            self.current_rule = self.build_rule(rule)
             self._data = self.data_replacer()
+
+    def build_rule(self, rule):
+        if not isinstance(rule, dict):
+            if self.mode == 'replace':
+                values = ['' for _ in rule]
+                rule = dict(zip(list(rule), values))
+
+            else:
+                if isinstance(rule, str):
+                    rule = {rule: rule}
+                if isinstance(rule, list):
+                    self.start(rule)
+        return rule
 
     # --------------------------------------------------------------------------------- core function
     def data_replacer(self, data=None):
@@ -84,6 +85,7 @@ class Replacer(object):
             for key, value in data.items():
                 self.count[2] += 1
 
+                # FIXME ...
                 if type(value).__name__ not in self.mode_dtype:
                     continue
 
@@ -323,3 +325,138 @@ def replacer(*rules, data=None, replace_key=False, mode='replace', mode_dtype=No
 
 def printer(data):
     return Printer(data)
+
+
+data = {
+    "ret": 0,
+    "content": {
+        "pageNum": 1,
+        "pageSize": 10,
+        "size": 10,
+        "startRow": 1,
+        "endRow": 10,
+        "total": 558,
+        "pages": 56,
+        "list": [
+            {
+                "pageNum": 1,
+                "pageSize": 10,
+                "total": "null",
+                "lsxm": "null",
+                "xb": "null",
+                "csrq": "null",
+                "zgxl": "null",
+                "sjhm": "0793-5827746",
+                "zylb": "null",
+                "zyzh": "null",
+                "zgzlb": "null",
+                "zgzh": "null",
+                "lszp": "null",
+                "addTime": "null",
+                "lsid": "null",
+                "zyjg": "null",
+                "xbmc": "null",
+                "zgxlmc": "null",
+                "deptName": "null",
+                "zyfw": "null",
+                "ywzcmc": "null",
+                "zylbmc": "null",
+                "zgzlbmc": "null",
+                "swsmc": "江西童少华律师事务所",
+                "deptId": "null",
+                "id": 614,
+                "ywzc": "null",
+                "xmpy": "null",
+                "mz": "null",
+                "zjbh": "null",
+                "dzyx": "null",
+                "lshfNum": "null",
+                "score": "null",
+                "vitality": "null",
+                "sczyrq": "null",
+                "deptAdress": "null",
+                "grjj": "null",
+                "zynx": "null",
+                "mapx": "null",
+                "mapy": "null",
+                "deptTel": "null",
+                "deptLogo": "null",
+                "idEnc": "null",
+                "logo": "null",
+                "img": "null",
+                "nameOfPath": "江西省上饶市弋阳县城南辉煌路3号"
+            },
+            {
+                "pageNum": 1,
+                "pageSize": 10,
+                "total": "null",
+                "lsxm": "null",
+                "xb": "null",
+                "csrq": "null",
+                "zgxl": "null",
+                "sjhm": "13807931789",
+                "zylb": "null",
+                "zyzh": "null",
+                "zgzlb": "null",
+                "zgzh": "null",
+                "lszp": "null",
+                "addTime": "null",
+                "lsid": "null",
+                "zyjg": "null",
+                "xbmc": "null",
+                "zgxlmc": "null",
+                "deptName": "null",
+                "zyfw": "null",
+                "ywzcmc": "null",
+                "zylbmc": "null",
+                "zgzlbmc": "null",
+                "swsmc": "江西茶乡律师事务所",
+                "deptId": "null",
+                "id": 615,
+                "ywzc": "null",
+                "xmpy": "null",
+                "mz": "null",
+                "zjbh": "null",
+                "dzyx": "null",
+                "lshfNum": "null",
+                "score": "null",
+                "vitality": "null",
+                "sczyrq": "null",
+                "deptAdress": "null",
+                "grjj": "null",
+                "zynx": "null",
+                "mapx": "null",
+                "mapy": "null",
+                "deptTel": "null",
+                "deptLogo": "null",
+                "idEnc": "null",
+                "logo": "null",
+                "img": "null",
+                "nameOfPath": "江西省上饶市婺源县文公南路2号光华宾馆"
+            }
+        ],
+        "prePage": 0,
+        "nextPage": 2,
+        "isFirstPage": "true",
+        "isLastPage": "false",
+        "hasPreviousPage": "false",
+        "hasNextPage": "true",
+        "navigatePages": 8,
+        "navigatepageNums": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8
+        ],
+        "navigateFirstPage": 1,
+        "navigateLastPage": 8,
+        "firstPage": 1,
+        "lastPage": 8
+    },
+    "total": "null",
+    "msg": "操作成功"
+}
