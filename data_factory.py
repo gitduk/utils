@@ -1,3 +1,4 @@
+import time
 from copy import deepcopy
 
 import requests
@@ -15,7 +16,7 @@ class Replacer(object):
         self.mode = mode
         self.mode_dtype = mode_dtype
         self._search_result = {'str': [], 'list': [], 'dict': [], 'int': [], 'float': []}
-        self.count = [0, 0, 0]
+        self.count = [0, 0, 0, 0]
         self.police()
         self.start()
 
@@ -55,18 +56,20 @@ class Replacer(object):
             self.mode_dtype = [self.mode_dtype]
 
     def start(self, rules=None):
+        start = time.time()
         rules = rules if rules else self.rules
         for rule in rules:
             self.count[0] += 1
             self.current_rule = self.build_rule(rule)
             self._data = self.data_replacer()
+        end = time.time()
+        self.count[3] = end - start
 
     def build_rule(self, rule):
         if not isinstance(rule, dict):
             if self.mode == 'replace':
                 values = ['' for _ in rule]
                 rule = dict(zip(list(rule), values))
-
             else:
                 if isinstance(rule, str):
                     rule = {rule: rule}
@@ -79,21 +82,31 @@ class Replacer(object):
         if not data: data = self._data
         dtype = type(data).__name__
 
-        if isinstance(data, (list, str)):  data = dict(zip(list(data), list(data)))
+        # process data, ensure data is a dict
+        if isinstance(data, list):
+            _data = []
+            for d in data:
+                _data.append(self.data_replacer(d))
+            return _data
+        elif isinstance(data, str):
+            data = dict(zip(list(data), list(data)))
+        elif isinstance(data, (int, float)):
+            return data
+        elif not isinstance(data, dict):
+            raise Exception('Value Type Error ... value type is unknown')
+
         for r_key, r_value in self.current_rule.items():
             self.count[1] += 1
             for key, value in data.items():
                 self.count[2] += 1
 
-                # FIXME ...
-                if type(value).__name__ not in self.mode_dtype:
+                if type(value).__name__ not in self.mode_dtype and not isinstance(value, (list, dict)):
                     continue
 
                 if self.mode == 'replace':
                     # replace key
                     if self.replace_key and not isinstance(r_value, (int, float)):
                         key, value = key.replace(r_key, r_value), data.pop(key)
-                        data[key] = value
 
                     if isinstance(value, str):
                         data[key] = value.replace(r_key, r_value)
@@ -107,7 +120,7 @@ class Replacer(object):
                 elif self.mode == 'search':
                     if key == r_key:
                         self._search_result.get(type(value).__name__).append(value)
-                    elif isinstance(value, dict):
+                    elif isinstance(value, (list, dict)):
                         self.data_replacer(value)
 
                 elif self.mode == 'update':
@@ -341,97 +354,21 @@ data = {
             {
                 "pageNum": 1,
                 "pageSize": 10,
-                "total": "null",
-                "lsxm": "null",
-                "xb": "null",
-                "csrq": "null",
-                "zgxl": "null",
                 "sjhm": "0793-5827746",
-                "zylb": "null",
-                "zyzh": "null",
-                "zgzlb": "null",
-                "zgzh": "null",
-                "lszp": "null",
-                "addTime": "null",
-                "lsid": "null",
-                "zyjg": "null",
-                "xbmc": "null",
-                "zgxlmc": "null",
-                "deptName": "null",
-                "zyfw": "null",
-                "ywzcmc": "null",
-                "zylbmc": "null",
                 "zgzlbmc": "null",
+                "total": 225,
                 "swsmc": "江西童少华律师事务所",
-                "deptId": "null",
                 "id": 614,
-                "ywzc": "null",
-                "xmpy": "null",
-                "mz": "null",
-                "zjbh": "null",
-                "dzyx": "null",
-                "lshfNum": "null",
-                "score": "null",
-                "vitality": "null",
-                "sczyrq": "null",
-                "deptAdress": "null",
-                "grjj": "null",
-                "zynx": "null",
-                "mapx": "null",
-                "mapy": "null",
-                "deptTel": "null",
-                "deptLogo": "null",
-                "idEnc": "null",
-                "logo": "null",
-                "img": "null",
                 "nameOfPath": "江西省上饶市弋阳县城南辉煌路3号"
             },
             {
                 "pageNum": 1,
                 "pageSize": 10,
-                "total": "null",
-                "lsxm": "null",
-                "xb": "null",
-                "csrq": "null",
-                "zgxl": "null",
                 "sjhm": "13807931789",
-                "zylb": "null",
-                "zyzh": "null",
-                "zgzlb": "null",
-                "zgzh": "null",
-                "lszp": "null",
-                "addTime": "null",
-                "lsid": "null",
-                "zyjg": "null",
-                "xbmc": "null",
-                "zgxlmc": "null",
-                "deptName": "null",
-                "zyfw": "null",
-                "ywzcmc": "null",
-                "zylbmc": "null",
-                "zgzlbmc": "null",
+                "total": 225,
                 "swsmc": "江西茶乡律师事务所",
                 "deptId": "null",
                 "id": 615,
-                "ywzc": "null",
-                "xmpy": "null",
-                "mz": "null",
-                "zjbh": "null",
-                "dzyx": "null",
-                "lshfNum": "null",
-                "score": "null",
-                "vitality": "null",
-                "sczyrq": "null",
-                "deptAdress": "null",
-                "grjj": "null",
-                "zynx": "null",
-                "mapx": "null",
-                "mapy": "null",
-                "deptTel": "null",
-                "deptLogo": "null",
-                "idEnc": "null",
-                "logo": "null",
-                "img": "null",
                 "nameOfPath": "江西省上饶市婺源县文公南路2号光华宾馆"
             }
         ],
@@ -455,7 +392,7 @@ data = {
         "navigateFirstPage": 1,
         "navigateLastPage": 8,
         "firstPage": 1,
-        "lastPage": 8
+        "lastPage": 8,
     },
     "total": "null",
     "msg": "操作成功"
