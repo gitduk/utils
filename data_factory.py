@@ -15,7 +15,7 @@ class Replacer(object):
         self.replace_key = replace_key
         self.mode = mode
         self.mode_dtype = mode_dtype
-        self._search_result = {'str': [], 'list': [], 'dict': [], 'int': [], 'float': []}
+        self._search_result = {}
         self.count = [0, 0, 0, 0]
         self.police()
         self.start()
@@ -119,7 +119,7 @@ class Replacer(object):
 
                 elif self.mode == 'search':
                     if key == r_key:
-                        self._search_result.get(type(value).__name__).append(value)
+                        self._search_result[key] = value
                     elif isinstance(value, (list, dict)):
                         self.data_replacer(value)
 
@@ -394,6 +394,12 @@ data = {
         "firstPage": 1,
         "lastPage": 8,
     },
-    "total": "null",
+    "total": 23,
     "msg": "操作成功"
 }
+
+s = time.time()
+for i in range(10000):
+    print(replacer('firstPage', 'msg', 'total', data, mode='search'))
+e = time.time()
+print(e - s)
