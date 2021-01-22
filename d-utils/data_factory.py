@@ -1,6 +1,5 @@
 import time
 from copy import deepcopy
-
 import requests
 
 
@@ -47,13 +46,12 @@ class Replacer(object):
 
             for k, value in data.items():
                 if not isinstance(value, (list, dict)):
-                    data[k] = self.apply_rule(key=key, value=value)
+                    data[k] = self.apply_rule(key=k, value=value)
                 else:
-                    data[k] = self.process(k, value)
-
-                # search core
-                if self.mode == 'search' and k in self._arg_keys:
-                    self.update_search_result(k, value)
+                    if self.mode == 'update' and k in self._update_dict.keys():
+                        data[k] = self._update_dict.get(k)
+                    else:
+                        data[k] = self.process(k, value)
 
         elif isinstance(data, list):
             # process list data in here
@@ -61,9 +59,9 @@ class Replacer(object):
             for d in data:
 
                 if not isinstance(d, (list, dict)):
-                    _data.append(self.apply_rule(key=key, value=d))
+                    _data.append(self.apply_rule(value=d))
                 else:
-                    _data.append(self.process(key=key, data=d))
+                    _data.append(self.process(data=d))
 
             return _data
         else:
@@ -118,7 +116,7 @@ class Replacer(object):
 
     def update_search_result(self, key, value):
         if key in self.search_result.keys():
-            if not isinstance(self.search_result.get('key'), list):
+            if not isinstance(self.search_result.get(key), list):
                 self.search_result[key] = [self.search_result.pop(key), value]
             elif not isinstance(value, list):
                 self.search_result[key].append(value)
@@ -131,17 +129,22 @@ class Replacer(object):
         up_dict = {}
         if len(self.rules) == 1 and isinstance(self.rules[0], dict):
             up_dict = self.rules[0]
-        elif len(self.rules) == 2 and isinstance(self.rules[0], str):
+
+        elif len(self.rules) == 2 and isinstance(self.rules[0], str) and isinstance(self.rules[2], str):
             up_dict = dict([self.rules])
 
-        elif len(self.rules) == 2 and isinstance(self.rules[0], list):
+        elif len(self.rules) == 2 and isinstance(self.rules[0], list) and isinstance(self.rules[1], list):
             up_dict = dict(list(zip(self.rules)))
 
-        elif len(self.rules) == 2 and isinstance(self.rules[0], dict):
+        elif len(self.rules) == 2 and isinstance(self.rules[0], list) and isinstance(self.rules[1], (str, int, float)):
+            up_dict = dict((_, self.rules[1]) for _ in self.rules[0])
+
+        elif len(self.rules) == 2 and isinstance(self.rules[0], dict) and isinstance(self.rules[0], dict):
             for k, v in self.rules[0].items():
                 value = self.rules[1].get(v)
                 up_dict[k] = value
 
+        # list,list,dict
         elif len(self.rules) == 3 and isinstance(self.rules[0], list) and isinstance(self.rules[2], dict):
             for k, v in zip(self.rules[0], self.rules[1]):
                 value = self.rules[2].get(v)
@@ -339,77 +342,3 @@ def replacer(*rules, data=None, replace_key=False, mode='replace', dtype=None, c
 
 def printer(data):
     return Printer(data)
-
-
-data_ = {
-    "ret": 0,
-    "content": {
-        "pageNum": 1,
-        "pageSize": 10,
-        "size": 10,
-        "startRow": 1,
-        "endRow": 10,
-        "total": 558,
-        "pages": 56,
-        "test": ['true', 'false', 'true', 'false'],
-        "list": [
-            {
-                "pageNum": 1,
-                "pageSize": 10,
-                "sjhm": "0793-5827746",
-                "zgzlbmc": "null",
-                "total": 225,
-                "swsmc": "江西童少华律师事务所",
-                "id": 614,
-                "nameOfPath": "江西省上饶市弋阳县城南辉煌路3号"
-            },
-            {
-                "pageNum": 1,
-                "pageSize": 10,
-                "sjhm": "13807931789",
-                "total": 225,
-                "swsmc": "江西茶乡律师事务所",
-                "deptId": "null",
-                "id": 615,
-                "nameOfPath": "江西省上饶市婺源县文公南路2号光华宾馆"
-            }
-        ],
-        "prePage": 0,
-        "nextPage": 2,
-        "isFirstPage": "true",
-        "isLastPage": "false",
-        "hasPreviousPage": "false",
-        "hasNextPage": "true",
-        "navigatePages": 8,
-        "navigatepageNums": [
-            1,
-            2,
-            3,
-            4,
-            5,
-            6,
-            7,
-            8
-        ],
-        "navigateFirstPage": 1,
-        "navigateLastPage": 8,
-        "firstPage": 1,
-        "lastPage": 8,
-    },
-    "total": 23,
-    "msg": "操作成功"
-}
-
-data = {
-    'name': 'kaige',
-    'age': '13',
-    'address': 'tyds bdong 603'
-
-}
-
-s = time.time()
-r = Replacer('lastPage', 'test', data_, mode='search')
-print(r.data)
-print(r.search_result)
-e = time.time()
-print(e - s)
