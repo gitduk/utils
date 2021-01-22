@@ -1,5 +1,6 @@
 import time
 from copy import deepcopy
+
 import requests
 
 
@@ -7,145 +8,64 @@ class Replacer(object):
     """ change or replace data from string, list or dict
     """
 
-    def __init__(self, *rules, data=None, replace_key=False, mode='replace', mode_dtype=None):
+    def __init__(self, *rules, data=None, replace_key=False, mode='replace', dtype=None):
         self.rules = rules if data else rules[:-1]
         self._data = deepcopy(data) if data else rules[-1]
-        self.current_rule = None
         self.replace_key = replace_key
+        self.dtype = dtype
+        self.search_result = {}
         self.mode = mode
-        self.mode_dtype = mode_dtype
-        self._search_result = {}
-        self.count = [0, 0, 0, 0]
-        self.police()
-        self.start()
 
     @property
     def data(self):
+        self._data = self.process(self._data)
         return self._data
 
-    @property
-    def search_result(self):
-        result = [_ for _ in self._search_result.values() if _]
-        if len(result) == 1:
-            return result[0][0] if len(result[0]) == 1 else result[0]
-        else:
-            return self._search_result
-
-    def police(self):
-        self.rules = self.rules if self._data else self.rules[:-1]
-        self._data = self._data if self._data else self.rules[-1]
-
-        # check rule
-        for r in self.rules:
-            if self.mode == 'replace':
-                if isinstance(r, (int, float)): raise Exception('Rule Type Error ... rule must be str in replace mode')
-            elif self.mode == 'update':
-                if not isinstance(r, dict): raise Exception('Rule Type Error ... rule must be dict in update mode')
-
-        # check other options
-        dtype = type(self._data).__name__
-        if dtype not in ['str', 'list', 'dict']:
-            raise Exception(f'Data Type Error ... valid data type: {dtype}')
-
-        if self.mode not in ['replace', 'update', 'search', 'delete']:
-            raise Exception(f'Mode Name Error ... valid mode: {self.mode}')
-
-        self.mode_dtype = self.mode_dtype if self.mode_dtype else ['str', 'list', 'dict', 'int', 'float']
-        if isinstance(self.mode_dtype, str):
-            self.mode_dtype = [self.mode_dtype]
-
-    def start(self, rules=None):
-        start = time.time()
-        rules = rules if rules else self.rules
-        for rule in rules:
-            self.count[0] += 1
-            self.current_rule = self.build_rule(rule)
-            self._data = self.data_replacer()
-        end = time.time()
-        self.count[3] = end - start
-
-    def build_rule(self, rule):
-        if not isinstance(rule, dict):
-            if self.mode == 'replace':
-                values = ['' for _ in rule]
-                rule = dict(zip(list(rule), values))
-            else:
-                if isinstance(rule, str):
-                    rule = {rule: rule}
-                if isinstance(rule, list):
-                    self.start(rule)
-        return rule
-
     # --------------------------------------------------------------------------------- core function
-    def data_replacer(self, data=None):
-        if not data: data = self._data
-        dtype = type(data).__name__
+    def process(self, data=None):
+        if isinstance(data, dict):
+            for key, value in data.items():
+                if isinstance(value, str):
+                    if self.mode == 'replace': data[key] = self.apply_rule(value)
 
-        # process data, ensure data is a dict
-        if isinstance(data, list):
+                elif isinstance(value, (list, dict)):
+                    data[key] = self.process(value)
+
+                if self.mode == 'search' and key in self.search_keys():
+                    self.search_result[key] = value
+
+        elif isinstance(data, list):
             _data = []
             for d in data:
-                _data.append(self.data_replacer(d))
+                if isinstance(d, str):
+                    _data.append(self.apply_rule(d))
+                elif isinstance(d, (list, dict)):
+                    _data.append(self.process(d))
             return _data
-        elif isinstance(data, str):
-            data = dict(zip(list(data), list(data)))
-        elif isinstance(data, (int, float)):
-            return data
-        elif not isinstance(data, dict):
-            raise Exception('Value Type Error ... value type is unknown')
-
-        for r_key, r_value in self.current_rule.items():
-            self.count[1] += 1
-            for key, value in data.items():
-                self.count[2] += 1
-
-                if type(value).__name__ not in self.mode_dtype and not isinstance(value, (list, dict)):
-                    continue
-
-                if self.mode == 'replace':
-                    # replace key
-                    if self.replace_key and not isinstance(r_value, (int, float)):
-                        key, value = key.replace(r_key, r_value), data.pop(key)
-
-                    if isinstance(value, str):
-                        data[key] = value.replace(r_key, r_value)
-                    elif isinstance(value, (int, float)):
-                        data[key] = r_value if isinstance(r_value, (int, float)) else value
-                    elif isinstance(value, (list, dict)):
-                        data[key] = self.data_replacer(value)
-                    else:
-                        raise Exception('Value Type Error ... value type is unknown')
-
-                elif self.mode == 'search':
-                    if key == r_key:
-                        self._search_result[key] = value
-                    elif isinstance(value, (list, dict)):
-                        self.data_replacer(value)
-
-                elif self.mode == 'update':
-                    if key == r_key:
-                        data[key] = r_value
-                    elif isinstance(value, (list, dict)):
-                        data[key] = self.data_replacer(value)
-
-                elif self.mode == 'delete':
-                    if key == r_key:
-                        del data[key]
-
-        return self.dtype_translater(data, dtype)
-
-    @staticmethod
-    def dtype_translater(data, dtype):
-        if dtype == 'list':
-            return list(data.values())
-        elif dtype == 'str':
-            return ''.join(list(data.values()))
         else:
-            return data
+            raise Exception('Data Type Error ... data type is unsupported')
 
-    def __repr__(self):
-        print(f'count: {self.count}')
-        return repr(self.data) if self.mode != 'search' else repr(self.search_result)
+        return data
+
+    def apply_rule(self, value=None):
+        for rule in self.rules:
+            if isinstance(rule, (str, list)):
+                for r in list(rule):
+                    value = value.replace(r, '')
+            elif isinstance(rule, dict):
+                for k, v in rule.items():
+                    value = value.replace(k, v)
+
+        return value
+
+    def search_keys(self):
+        keys = []
+        for rule in self.rules:
+            if isinstance(rule, str):
+                keys.append(rule)
+            elif isinstance(rule, list):
+                keys.extend(rule)
+        return keys
 
 
 class Printer(object):
@@ -328,10 +248,8 @@ class DictFactory(object):
                     print(line)
 
 
-def replacer(*rules, data=None, replace_key=False, mode='replace', mode_dtype=None, count=False):
-    result = Replacer(*rules, data=data, replace_key=replace_key, mode=mode, mode_dtype=mode_dtype)
-    if count:
-        print(f'rule count: {result.count}')
+def replacer(*rules, data=None, replace_key=False, mode='replace', dtype=None, count=False):
+    result = Replacer(*rules, data=data, replace_key=replace_key, mode=mode, dtype=dtype)
     return result.data if mode != 'search' else result.search_result
 
 
@@ -339,7 +257,7 @@ def printer(data):
     return Printer(data)
 
 
-data = {
+data_ = {
     "ret": 0,
     "content": {
         "pageNum": 1,
@@ -397,3 +315,16 @@ data = {
     "msg": "操作成功"
 }
 
+data = {
+    'name': 'kaige',
+    'age': '13',
+    'address': 'tyds bdong 603'
+
+}
+
+s = time.time()
+r = Replacer('list', 'nameOfPath', data_, mode='search')
+print(r.data)
+print(r.search_result)
+e = time.time()
+print(e - s)
