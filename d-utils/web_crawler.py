@@ -222,7 +222,7 @@ class ParamFactory(object):
             for key, value in args[0].items():
                 value = args[1].get(value)
                 self._update(key, value, tag)
-        elif len(args) == 3 and isinstance(args[0], dict) and isinstance(args[2], dict):
+        elif len(args) == 3 and isinstance(args[0], list) and isinstance(args[2], dict):
             for key, value in zip(args[0], args[1]):
                 value = args[2].get(value)
                 self._update(key, value, tag)

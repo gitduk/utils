@@ -15,57 +15,141 @@ class Replacer(object):
         self.dtype = dtype
         self.search_result = {}
         self.mode = mode
+        if self.mode in ['search', 'delete']:
+            self._arg_keys = self.arg_keys()
+        elif self.mode == 'update':
+            self._update_dict = self.update_dict()
 
     @property
     def data(self):
-        self._data = self.process(self._data)
+        self._data = self.process(data=self._data)
         return self._data
 
     # --------------------------------------------------------------------------------- core function
-    def process(self, data=None):
+    def process(self, key=None, data=None):
+        """ 遍历整个数据 for search mode and delete mode
+
+        :param data: dict or list
+        :return: dict or list
+        """
+        if self.mode == 'delete':
+            for k in self._arg_keys:
+                try:
+                    del data[k]
+                except:
+                    continue
+        elif self.mode == 'search':
+            if key and key in self._arg_keys:
+                self.update_search_result(key, data)
+
         if isinstance(data, dict):
-            for key, value in data.items():
-                if isinstance(value, str):
-                    if self.mode == 'replace': data[key] = self.apply_rule(value)
+            # process dict data in here
 
-                elif isinstance(value, (list, dict)):
-                    data[key] = self.process(value)
+            for k, value in data.items():
+                if not isinstance(value, (list, dict)):
+                    data[k] = self.apply_rule(key=key, value=value)
+                else:
+                    data[k] = self.process(k, value)
 
-                if self.mode == 'search' and key in self.search_keys():
-                    self.search_result[key] = value
+                # search core
+                if self.mode == 'search' and k in self._arg_keys:
+                    self.update_search_result(k, value)
 
         elif isinstance(data, list):
+            # process list data in here
             _data = []
             for d in data:
-                if isinstance(d, str):
-                    _data.append(self.apply_rule(d))
-                elif isinstance(d, (list, dict)):
-                    _data.append(self.process(d))
+
+                if not isinstance(d, (list, dict)):
+                    _data.append(self.apply_rule(key=key, value=d))
+                else:
+                    _data.append(self.process(key=key, data=d))
+
             return _data
         else:
             raise Exception('Data Type Error ... data type is unsupported')
 
         return data
 
-    def apply_rule(self, value=None):
-        for rule in self.rules:
-            if isinstance(rule, (str, list)):
-                for r in list(rule):
-                    value = value.replace(r, '')
-            elif isinstance(rule, dict):
-                for k, v in rule.items():
-                    value = value.replace(k, v)
+    def apply_rule(self, key=None, value=None):
+        """ 处理数据 process other type data in here
+        for replace, update, search mode
+
+        :param key:str, int, float or others
+        :param value: all types
+        :return:value
+        """
+
+        if self.mode == 'replace':
+            # replace police
+            if isinstance(value, (int, float)):
+                return value
+
+            for rule in self.rules:
+                if isinstance(rule, (int, float)): continue
+
+                if isinstance(rule, (str, list)):
+                    for r in list(rule):
+                        if isinstance(r, (int, float)): continue
+                        value = value.replace(r, '')
+                elif isinstance(rule, dict):
+                    for k, v in rule.items():
+                        value = value.replace(k, v)
+
+        elif self.mode == 'update':
+            if key and key in self._update_dict.keys():
+                value = self._update_dict.get(key)
+
+        elif self.mode == 'search' and key and key in self._arg_keys:
+            self.update_search_result(key, value)
 
         return value
 
-    def search_keys(self):
+    def arg_keys(self):
         keys = []
         for rule in self.rules:
             if isinstance(rule, str):
                 keys.append(rule)
             elif isinstance(rule, list):
                 keys.extend(rule)
+            elif isinstance(rule, dict):
+                keys.extend(rule.keys())
         return keys
+
+    def update_search_result(self, key, value):
+        if key in self.search_result.keys():
+            if not isinstance(self.search_result.get('key'), list):
+                self.search_result[key] = [self.search_result.pop(key), value]
+            elif not isinstance(value, list):
+                self.search_result[key].append(value)
+            else:
+                self.search_result[key].extend(value)
+        else:
+            self.search_result[key] = value
+
+    def update_dict(self):
+        up_dict = {}
+        if len(self.rules) == 1 and isinstance(self.rules[0], dict):
+            up_dict = self.rules[0]
+        elif len(self.rules) == 2 and isinstance(self.rules[0], str):
+            up_dict = dict([self.rules])
+
+        elif len(self.rules) == 2 and isinstance(self.rules[0], list):
+            up_dict = dict(list(zip(self.rules)))
+
+        elif len(self.rules) == 2 and isinstance(self.rules[0], dict):
+            for k, v in self.rules[0].items():
+                value = self.rules[1].get(v)
+                up_dict[k] = value
+
+        elif len(self.rules) == 3 and isinstance(self.rules[0], list) and isinstance(self.rules[2], dict):
+            for k, v in zip(self.rules[0], self.rules[1]):
+                value = self.rules[2].get(v)
+                up_dict[k] = value
+        else:
+            raise Exception('Args Format Error ... unsupported args format')
+
+        return up_dict
 
 
 class Printer(object):
@@ -267,6 +351,7 @@ data_ = {
         "endRow": 10,
         "total": 558,
         "pages": 56,
+        "test": ['true', 'false', 'true', 'false'],
         "list": [
             {
                 "pageNum": 1,
@@ -323,7 +408,7 @@ data = {
 }
 
 s = time.time()
-r = Replacer('list', 'nameOfPath', data_, mode='search')
+r = Replacer('lastPage', 'test', data_, mode='search')
 print(r.data)
 print(r.search_result)
 e = time.time()
