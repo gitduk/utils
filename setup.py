@@ -12,7 +12,7 @@ from shutil import rmtree
 from setuptools import find_packages, setup, Command
 
 # Package meta-data.
-NAME = 'utils-data'
+NAME = 'Dtautils'
 DESCRIPTION = 'some utils to process data easy'
 URL = 'https://github.com/gitduk/utils'
 EMAIL = 'wdkany@gmail.com'

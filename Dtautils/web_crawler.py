@@ -2,7 +2,7 @@ import json
 import logging
 import requests
 from requests.cookies import merge_cookies
-from data_factory import Printer, DataGroup
+from .data_factory import Printer, DataGroup
 
 logger = logging.getLogger(__name__)
 
