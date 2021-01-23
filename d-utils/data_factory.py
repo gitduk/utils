@@ -213,7 +213,7 @@ class Printer(object):
             lines.append(f'{key} {"-" * bar_length}')
             for d_key, d_value in value.items():
                 fmt = '{:<%d} | {:<%d}' % tuple(data_group.max_data_length)
-                lines.append(fmt.format(d_key, d_value))
+                lines.append(fmt.format(str(d_key), str(d_value)))
 
             lines.append('')
         return lines
@@ -230,8 +230,8 @@ class DataGroup(object):
 
     def add_data(self, title, data):
         if not data: return
-        max_key_length = max([len(_) for _ in data.keys()])
-        max_value_length = max([len(_) for _ in data.values()])
+        max_key_length = max([len(str(_)) for _ in data.keys()])
+        max_value_length = max([len(str(_)) for _ in data.values()])
 
         self.max_data_length[0] = max_key_length if max_key_length > self.max_data_length[0] else self.max_data_length[
             0]

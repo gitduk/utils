@@ -1,8 +1,7 @@
 import json
 import logging
-import re
 import requests
-from requests.cookies import merge_cookies, extract_cookies_to_jar, MockRequest, MockResponse
+from requests.cookies import merge_cookies
 from data_factory import Printer, DataGroup
 
 logger = logging.getLogger(__name__)
@@ -39,8 +38,6 @@ class ParamFactory(object):
             self.post_type = 'payload'
         else:
             self.post_type = ''
-
-        self._cookie_jar_dict = self.cookie_jar._cookies
 
         self._path_dict = self.str_to_dict(self._url, tag='path') or {}
         self._param_dict = self.str_to_dict(self._url, tag='param') or {}
@@ -105,14 +102,11 @@ class ParamFactory(object):
 
     @property
     def cookies(self):
-        return self._cookie_dict if self._cookie_dict else {}
+        self._cookie_dict = self._cookie_jar.get_dict()
+        return self._cookie_dict
 
     @property
     def cookie_jar(self):
-        if not self._cookie_jar.items():
-            self._cookie_jar = requests.utils.cookiejar_from_dict(self._cookie_dict)
-        else:
-            self._cookie_jar = requests.utils.cookiejar_from_dict(self._cookie_dict, self._cookie_jar, self.overwrite)
         return self._cookie_jar
 
     @property
@@ -186,7 +180,7 @@ class ParamFactory(object):
                 self._update(key, value, tag=tag)
 
         elif len(args) == 1 and isinstance(args[0], requests.models.Response):
-            self.cookies = {**self.cookies, **dict(args[0].cookies.items())}
+            self._cookie_jar.update(args[0].cookies)
 
         elif len(args) == 2 and isinstance(args[0], str):
             key, value = args
@@ -221,16 +215,9 @@ class ParamFactory(object):
         elif tag == 'header':
             self._header_dict[key] = value
         elif tag == 'cookie':
-            self._cookie_dict[key] = value
+            self._cookie_jar.set(key, value)
         elif tag == 'path':
             self._path_dict[key] = value
-
-    def _update_from_response(self, resp, tag=None):
-        if not tag: tag = 'cookie'
-
-        if tag == 'cookie':
-            cookie = resp.headers.get('Set-Cookie')
-            self.cookie_setter(cookie)
 
     def str_to_dict(self, string, tag=None):
         """ translate string to dict
