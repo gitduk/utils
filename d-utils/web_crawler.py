@@ -2,7 +2,7 @@ import json
 import logging
 import re
 import requests
-from requests.cookies import merge_cookies
+from requests.cookies import merge_cookies, extract_cookies_to_jar, MockRequest, MockResponse
 from data_factory import Printer, DataGroup
 
 logger = logging.getLogger(__name__)
@@ -173,31 +173,6 @@ class ParamFactory(object):
             raise Exception('Type error ... type of cookie is not dict')
 
     # --------------------------------------------------------------------------------- core functions
-
-    def cookie_setter(self, string):
-        """ build cookie dict use set-cookie field
-
-        string: set-cookie string
-        """
-        if not string:
-            return
-        elif string and not isinstance(string, str):
-            raise Exception('string is None')
-
-        if isinstance(string, bytes): string = string.decode('utf-8')
-        string = re.search('(.*?); Path', string)
-
-        if string:
-            string = string.group(1)
-            for cookie in string.split(';'):
-                if '=' in cookie:
-                    key, value = cookie.split('=')[0].strip(), cookie.split('=')[1].strip()
-                    self._cookie_dict[key] = value
-                else:
-                    continue
-        else:
-            print(f'Set-Cookie filed is None')
-
     def update(self, *args, tag=None):
         """ update tag use args
 
@@ -208,24 +183,27 @@ class ParamFactory(object):
 
         if len(args) == 1 and isinstance(args[0], dict):
             for key, value in args[0].items():
-                self._update(key, value, tag)
+                self._update(key, value, tag=tag)
+
+        elif len(args) == 1 and isinstance(args[0], requests.models.Response):
+            self.cookies = {**self.cookies, **dict(args[0].cookies.items())}
 
         elif len(args) == 2 and isinstance(args[0], str):
             key, value = args
-            self._update(key, value, tag)
+            self._update(key, value, tag=tag)
 
         elif len(args) == 2 and isinstance(args[0], list):
             for key, value in zip(args):
-                self._update(key, value, tag)
+                self._update(key, value, tag=tag)
 
         elif len(args) == 2 and isinstance(args[0], dict):
             for key, value in args[0].items():
                 value = args[1].get(value)
-                self._update(key, value, tag)
+                self._update(key, value, tag=tag)
         elif len(args) == 3 and isinstance(args[0], list) and isinstance(args[2], dict):
             for key, value in zip(args[0], args[1]):
                 value = args[2].get(value)
-                self._update(key, value, tag)
+                self._update(key, value, tag=tag)
 
     def _update(self, key, value, tag=None):
         if not tag:
@@ -233,6 +211,8 @@ class ParamFactory(object):
                 if key in key_list:
                     tag = tag_name
                     break
+        if not tag:
+            tag = 'param' if self.method == 'GET' else 'body'
 
         if tag == 'param':
             self._param_dict[key] = value
@@ -244,6 +224,13 @@ class ParamFactory(object):
             self._cookie_dict[key] = value
         elif tag == 'path':
             self._path_dict[key] = value
+
+    def _update_from_response(self, resp, tag=None):
+        if not tag: tag = 'cookie'
+
+        if tag == 'cookie':
+            cookie = resp.headers.get('Set-Cookie')
+            self.cookie_setter(cookie)
 
     def str_to_dict(self, string, tag=None):
         """ translate string to dict

@@ -1,5 +1,5 @@
-import time
 from copy import deepcopy
+
 import requests
 
 
@@ -42,7 +42,7 @@ class Replacer(object):
                 self.update_search_result(key, data)
 
         if isinstance(data, dict):
-            # process dict data in here
+            # process dict data here
 
             for k, value in data.items():
                 if not isinstance(value, (list, dict)):
@@ -54,7 +54,7 @@ class Replacer(object):
                         data[k] = self.process(k, value)
 
         elif isinstance(data, list):
-            # process list data in here
+            # process list data here
             _data = []
             for d in data:
 
@@ -70,7 +70,7 @@ class Replacer(object):
         return data
 
     def apply_rule(self, key=None, value=None):
-        """ 处理数据 process other type data in here
+        """ 处理数据 process other type data here
         for replace, update, search mode
 
         :param key:str, int, float or others
@@ -162,46 +162,42 @@ class Printer(object):
         self.information_extractor()
         self.printer()
 
-    def information_extractor(self):
-        if isinstance(self.data, requests.models.Response):
-            group_one = DataGroup('request')
-            group_one.add_info('url', self.data.url)
-
-            body = self.data.request.body if self.data.request.body else ''
-            headers = self.data.request.headers if self.data.request.headers else ''
-            cookies = self.data.request._cookies if self.data.request._cookies else ''
-
-            group_one.add_info('body', body)
-            group_one.add_data('headers', headers)
-            group_one.add_data('cookies', cookies)
-
-            resp_headers = self.data.headers if self.data.headers else ''
-            resp_cookies = self.data.cookies if self.data.cookies else ''
-            group_two = DataGroup('response')
-            group_two.add_data('headers', resp_headers)
-            group_two.add_data('cookies', resp_cookies)
-
-            self.data_groups.append(group_one)
-            self.data_groups.append(group_two)
-
-            # elif isinstance(self.data, scrapy.http.response.html.HtmlResponse):
-            # self.print_queue['request body'] = self.data.request.body
-            # self.print_queue['request header'] = self.data.request.headers
-            # self.print_queue['request cookie'] = self.data.request.cookies
-
-            # self.print_queue['response header'] = self.data.request.headers
-            ...
-
     def printer(self):
         for dg in self.data_groups:
             lines = self.parse_data_group(dg)
             for line in lines:
                 print(line)
 
+    def information_extractor(self):
+        if isinstance(self.data, requests.models.Response):
+            data_dict = {
+                'url': self.data.url,
+                'body': self.data.request.body,
+                'headers': self.data.request.headers,
+                'cookies': self.data.request._cookies,
+            }
+            self.add_to_data_group('request', data_dict)
+
+            data_dict = {
+                'headers': self.data.headers,
+                'cookies': self.data.cookies,
+            }
+            self.add_to_data_group('response', data_dict)
+
+    def add_to_data_group(self, name, data_dict):
+        group = DataGroup(name)
+        for key, value in data_dict.items():
+            if not value: value = ''
+            if isinstance(value, str):
+                group.add_info(key, value)
+            else:
+                group.add_data(key, value)
+        self.data_groups.append(group)
+
     @staticmethod
     def parse_data_group(data_group):
         bar_length = data_group.bar_length
-        head = f'{"+" * (bar_length + len(data_group.name))} {data_group.name}'
+        head = f'{data_group.name} {"+" * (bar_length + len(data_group.name))}'
         info = data_group.info
         data_pool = data_group.data_pool
         lines = [head]
@@ -214,7 +210,7 @@ class Printer(object):
         lines.append('')
         # add data to lines
         for key, value in data_pool.items():
-            lines.append(f'{"-" * bar_length} {key}')
+            lines.append(f'{key} {"-" * bar_length}')
             for d_key, d_value in value.items():
                 fmt = '{:<%d} | {:<%d}' % tuple(data_group.max_data_length)
                 lines.append(fmt.format(d_key, d_value))
