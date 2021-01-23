@@ -12,13 +12,13 @@ from shutil import rmtree
 from setuptools import find_packages, setup, Command
 
 # Package meta-data.
-NAME = 'utils-d'
-DESCRIPTION = 'some utils'
+NAME = 'utils-data'
+DESCRIPTION = 'some utils to process data easy'
 URL = 'https://github.com/gitduk/utils'
 EMAIL = 'wdkany@gmail.com'
 AUTHOR = 'kaige'
 REQUIRES_PYTHON = '>=3.6.0'
-VERSION = '0.2.1'
+VERSION = '0.1.0'
 
 # What packages are required for this module to be executed?
 REQUIRED = [
