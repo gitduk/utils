@@ -1,3 +1,4 @@
+import re
 from copy import deepcopy
 
 import requests
@@ -12,17 +13,21 @@ class Replacer(object):
         self._data = deepcopy(data) if data else rules[-1]
         self.replace_key = replace_key
         self.dtype = dtype
-        self.search_result = {}
+        self._search_result = {}
         self.mode = mode
         if self.mode in ['search', 'delete']:
-            self._arg_keys = self.arg_keys()
+            self._rule_keys = self.get_rule_keys()
         elif self.mode == 'update':
-            self._update_dict = self.update_dict()
+            self._update_dict = self.rules_to_dict()
 
     @property
     def data(self):
-        self._data = self.process(data=self._data)
-        return self._data
+        return self.process(data=self._data)
+
+    @property
+    def search_result(self):
+        self.process(data=self._data)
+        return self._search_result
 
     # --------------------------------------------------------------------------------- core function
     def process(self, key=None, data=None):
@@ -32,13 +37,13 @@ class Replacer(object):
         :return: dict or list
         """
         if self.mode == 'delete':
-            for k in self._arg_keys:
+            for k in self._rule_keys:
                 try:
                     del data[k]
                 except:
                     continue
         elif self.mode == 'search':
-            if key and key in self._arg_keys:
+            if key and key in self._rule_keys:
                 self.update_search_result(key, data)
 
         if isinstance(data, dict):
@@ -64,10 +69,19 @@ class Replacer(object):
                     _data.append(self.process(data=d))
 
             return _data
+
+        elif isinstance(data, str) and self.mode == 'search':
+            self.build_item(data)
         else:
             raise Exception('Data Type Error ... data type is unsupported')
 
         return data
+
+    def build_item(self, data, *args):
+        if not data: data = self._data
+
+        for key, re_rule in self.rules_to_dict().items():
+            self._search_result[key] = re.findall(re_rule, data, *args)
 
     def apply_rule(self, key=None, value=None):
         """ 处理数据 process other type data here
@@ -98,12 +112,12 @@ class Replacer(object):
             if key and key in self._update_dict.keys():
                 value = self._update_dict.get(key)
 
-        elif self.mode == 'search' and key and key in self._arg_keys:
+        elif self.mode == 'search' and key and key in self._rule_keys:
             self.update_search_result(key, value)
 
         return value
 
-    def arg_keys(self):
+    def get_rule_keys(self):
         keys = []
         for rule in self.rules:
             if isinstance(rule, str):
@@ -115,44 +129,60 @@ class Replacer(object):
         return keys
 
     def update_search_result(self, key, value):
-        if key in self.search_result.keys():
-            if not isinstance(self.search_result.get(key), list):
-                self.search_result[key] = [self.search_result.pop(key), value]
+        if key in self._search_result.keys():
+            if not isinstance(self._search_result.get(key), list):
+                self._search_result[key] = [self._search_result.pop(key), value]
             elif not isinstance(value, list):
-                self.search_result[key].append(value)
+                self._search_result[key].append(value)
             else:
-                self.search_result[key].extend(value)
+                self._search_result[key].extend(value)
         else:
-            self.search_result[key] = value
+            self._search_result[key] = value
 
-    def update_dict(self):
-        up_dict = {}
-        if len(self.rules) == 1 and isinstance(self.rules[0], dict):
-            up_dict = self.rules[0]
+    def rules_to_dict(self):
+        rule_dict = {}
+        if self.mode == 'update':
+            if len(self.rules) == 1 and isinstance(self.rules[0], dict):
+                rule_dict = self.rules[0]
 
-        elif len(self.rules) == 2 and isinstance(self.rules[0], str) and isinstance(self.rules[2], str):
-            up_dict = dict([self.rules])
+            elif len(self.rules) == 2 and isinstance(self.rules[0], str) and isinstance(self.rules[2], str):
+                rule_dict = dict([self.rules])
 
-        elif len(self.rules) == 2 and isinstance(self.rules[0], list) and isinstance(self.rules[1], list):
-            up_dict = dict(list(zip(self.rules)))
+            elif len(self.rules) == 2 and isinstance(self.rules[0], list) and isinstance(self.rules[1], list):
+                rule_dict = dict(list(zip(self.rules)))
 
-        elif len(self.rules) == 2 and isinstance(self.rules[0], list) and isinstance(self.rules[1], (str, int, float)):
-            up_dict = dict((_, self.rules[1]) for _ in self.rules[0])
+            elif len(self.rules) == 2 and isinstance(self.rules[0], list) and isinstance(self.rules[1],
+                                                                                         (str, int, float)):
+                rule_dict = dict((_, self.rules[1]) for _ in self.rules[0])
 
-        elif len(self.rules) == 2 and isinstance(self.rules[0], dict) and isinstance(self.rules[0], dict):
-            for k, v in self.rules[0].items():
-                value = self.rules[1].get(v)
-                up_dict[k] = value
+            elif len(self.rules) == 2 and isinstance(self.rules[0], dict) and isinstance(self.rules[0], dict):
+                for k, v in self.rules[0].items():
+                    value = self.rules[1].get(v)
+                    rule_dict[k] = value
 
-        # list,list,dict
-        elif len(self.rules) == 3 and isinstance(self.rules[0], list) and isinstance(self.rules[2], dict):
-            for k, v in zip(self.rules[0], self.rules[1]):
-                value = self.rules[2].get(v)
-                up_dict[k] = value
+            # list,list,dict
+            elif len(self.rules) == 3 and isinstance(self.rules[0], list) and isinstance(self.rules[2], dict):
+                for k, v in zip(self.rules[0], self.rules[1]):
+                    value = self.rules[2].get(v)
+                    rule_dict[k] = value
+            else:
+                raise Exception(f'Args Format Error ... unsupported args format : {self.rules}')
+
+        elif self.mode == 'search':
+            for rule in self.rules:
+                if isinstance(rule, str):
+                    rule_dict[rule] = rule
+                elif isinstance(rule, list):
+                    rule_dict = {**rule_dict, **dict(list(zip(rule, rule)))}
+                elif isinstance(rule, dict):
+                    rule_dict = {**rule_dict, **rule}
+                else:
+                    print(f'Rule Type Error ... {type(rule)}')
+
         else:
-            raise Exception('Args Format Error ... unsupported args format')
+            raise Exception(f'Rule To Dict Error ... unsupported mode: {self.mode}')
 
-        return up_dict
+        return rule_dict
 
 
 class Printer(object):
@@ -331,9 +361,9 @@ class DictFactory(object):
                     print(line)
 
 
-def replacer(*rules, data=None, replace_key=False, mode='replace', dtype=None, count=False):
+def replacer(*rules, data=None, replace_key=False, mode='replace', dtype=None):
     result = Replacer(*rules, data=data, replace_key=replace_key, mode=mode, dtype=dtype)
-    return result.data if mode != 'search' else result.search_result
+    return result.data if mode != 'search' else result._search_result
 
 
 def printer(data):
