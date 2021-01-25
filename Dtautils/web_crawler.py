@@ -4,7 +4,7 @@ import re
 from parsel import Selector
 import requests
 from requests.cookies import merge_cookies, cookiejar_from_dict
-from data_factory import Printer, DataGroup, replacer, Replacer
+from Dtautils.data_factory import Printer, DataGroup, replacer, Replacer
 
 logger = logging.getLogger(__name__)
 
@@ -15,73 +15,37 @@ class Spider(object):
     """
 
     # todo add cookie jar dict
-    def __init__(self, url, body=None, header=None, cookie=None, overwrite=True, want=None, post_type=None):
-        self._url = url
-        self._path_dict = {}
-        self._param_dict = {}
-        self._body_dict = {}
-        self._header_dict = {}
-        self._cookie_dict = {}
+    def __init__(self, url=None, body=None, header=None, cookie=None, overwrite=True, want=None, post_type=None,
+                 **kwargs):
+
+        if not header: header = {
+            'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.88 Safari/537.36'}
+
+        self._path_dict = self.str_to_dict(url, tag='path')
+        self._param_dict = self.str_to_dict(url, tag='param')
+        self._body_dict = self.str_to_dict(body, tag='body')
+        self._header_dict = self.str_to_dict(header, tag='header')
         self.overwrite = overwrite
-        self._cookie_jar = requests.cookies.RequestsCookieJar()
+
+        cookie_dict = self.str_to_dict(cookie, tag='cookie')
+        self._cookie_jar = cookiejar_from_dict(cookie_dict) if cookie else requests.cookies.RequestsCookieJar()
+
+        self.method = 'POST' if body else 'GET'
+        self.post_type = 'form' if body and not post_type else post_type
 
         self._resp = None
         self._resp_data = None
-        self.others = None
         self.request_kwargs = {}
         self.want = want
-
-        self.method = 'POST' if body else 'GET'
-        if self.method == 'POST' and not post_type:
-            self.post_type = 'form'
-        else:
-            self.post_type = post_type
-
-        self._path_str = self._url.split('?')[0]
-        self._param_str = '' if body or '?' not in self._url else self._url.split('?')[-1]
-        self.str_to_dict(self._url, tag='path')
-        self.str_to_dict(self._url, tag='param')
-
-        if isinstance(body, str):
-            self._body_str = body or ''
-            self.str_to_dict(self._body_str, tag='body')
-        else:
-            self._body_dict = body if body else {}
-            self._body_str = self.body
-
-        if isinstance(header, str):
-            self._header_str = header or 'User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.88 Safari/537.36'
-            self.str_to_dict(self._header_str, tag='header')
-        else:
-            self._header_dict = header if header else {}
-
-        if isinstance(cookie, str):
-            self._cookie_str = cookie or ''
-            self.str_to_dict(self._cookie_str, tag='cookie')
-        else:
-            self._cookie_jar = cookiejar_from_dict(cookie) if cookie else self._cookie_jar
-
-    def clear(self, key=None):
-        if key == 'path':
-            self._path_dict.clear()
-        elif key == 'param':
-            self._param_dict.clear()
-        elif key == 'header':
-            self._header_dict.clear()
-        elif key == 'cookie':
-            self._cookie_dict.clear()
-        elif key == 'cookie_jar' and self._cookie_jar:
-            self._cookie_jar.clear()
-        elif key is None:
-            self._path_dict.clear()
-            self._param_dict.clear()
-            self._header_dict.clear()
-            self._cookie_dict.clear()
-            self._cookie_jar.clear()
+        self.kwargs = kwargs
+        self.others = None
 
     # --------------------------------------------------------------------------------- property
     @property
     def status(self):
+        assert self.url, 'Please set a url for Spider'
+        if not self._resp: self.request()
+
         if not self.want:
             status_code = self._resp.status_code
             return status_code if status_code == 200 else f'{status_code} {STATUS_INTRODUTION.get(status_code)}'
@@ -92,11 +56,16 @@ class Spider(object):
 
     @property
     def url(self):
-        path = self.path[:-1] if self.path.endswith('/') else self.path
-        return path + self.param if self.method == 'GET' else self._url
+        if self.path:
+            path = self.path[:-1] if self.path.endswith('/') else self.path
+            return path + self.param
+        else:
+            return ''
 
     @property
     def path(self):
+        assert self._path_dict, 'Please set a url for Spider'
+
         protocol = self._path_dict.get('protocol')
         domain = self._path_dict.get('domain')
         sub_path = '/'.join([value for key, value in self._path_dict.items() if key not in ['protocol', 'domain']])
@@ -104,27 +73,26 @@ class Spider(object):
 
     @property
     def param(self):
-        split_char = '?' if self._param_dict else ''
-        param_str = '&'.join([f'{key}={value}' for key, value in self._param_dict.items()]) if self._param_dict else ''
-        return split_char + param_str
+        if not self._param_dict: return ''
+        param_str = '&'.join([f'{key}={value}' for key, value in self._param_dict.items()])
+        return '?' + param_str
 
     @property
     def body(self):
+        if not self.post_type: return ''
+
         if self.post_type == 'form':
             return '&'.join([f'{key}={value}' for key, value in self._body_dict.items()])
-        elif self.post_type == 'payload':
-            return json.dumps(self._body_dict)
         else:
-            return ''
+            return json.dumps(self._body_dict)
 
     @property
     def headers(self):
-        return self._header_dict if self._header_dict else {}
+        return self._header_dict
 
     @property
     def cookies(self):
-        self._cookie_dict = self._cookie_jar.get_dict()
-        return self._cookie_dict
+        return self._cookie_jar.get_dict()
 
     @property
     def cookie_jar(self):
@@ -137,8 +105,13 @@ class Spider(object):
             'param': list(self._param_dict.keys()),
             'body': list(self._body_dict.keys()),
             'header': list(self._header_dict.keys()),
-            'cookie': list(self._cookie_dict.keys()),
+            'cookie': list(self.cookies.keys()),
         }
+
+    @property
+    def resp(self):
+        if not self._resp: self._resp = self.request()
+        return self._resp
 
     @property
     def resp_data(self):
@@ -155,82 +128,68 @@ class Spider(object):
 
     @path.setter
     def path(self, path):
-        if isinstance(path, dict):
-            self._path_dict = path
-        elif isinstance(path, str):
-            self._path_dict = self.str_to_dict(path, tag='path')
-        else:
-            raise Exception('Type error ... type of path is not dict or str')
+        self._path_dict = self.str_to_dict(path, tag='path')
 
     @param.setter
     def param(self, params):
-        if isinstance(params, dict):
-            self._param_dict = params
-        elif isinstance(params, str):
-            self._param_dict = self.str_to_dict(params, tag='param')
-        else:
-            raise Exception('Type error ... type of params is not dict')
+        self._param_dict = self.str_to_dict(params, tag='param')
 
     @body.setter
     def body(self, body):
-        if isinstance(body, dict):
-            self._body_dict = body
-        else:
-            raise Exception('Type error ... type of body is not dict')
+        self._body_dict = self.str_to_dict(body, tag='body')
 
     @headers.setter
     def headers(self, header):
-        if isinstance(header, dict):
-            self._header_dict = header
-        else:
-            raise Exception('Type error ... type of header is not dict')
+        self._header_dict = self.str_to_dict(header, tag='header')
 
     @cookies.setter
     def cookies(self, cookie):
-        if isinstance(cookie, dict):
-            self._cookie_jar = cookiejar_from_dict(cookie_dict=cookie, cookiejar=self._cookie_jar,
-                                                   overwrite=self.overwrite)
-        else:
-            raise Exception('Type error ... type of cookie is not dict')
+        cookie_dict = self.str_to_dict(cookie, tag='cookie')
+        self._cookie_jar = cookiejar_from_dict(cookie_dict=cookie_dict, cookiejar=self._cookie_jar,
+                                               overwrite=self.overwrite)
+
+    @resp.setter
+    def resp(self, resp):
+        assert resp.text, f'Response text is null ... \n{resp.url}'
+        self._resp = resp
+        self._resp_data = resp.text if '<html' in resp.text and '</html>' in resp.text else resp.json()
+
+    @resp_data.setter
+    def resp_data(self, resp_data):
+        self._resp_data = resp_data
 
     # --------------------------------------------------------------------------------- core functions
     def request(self, **kwargs):
-        self.request_kwargs = kwargs
+        assert self.url, 'Please set a url for Spider'
+        self.request_kwargs = kwargs if kwargs else self.request_kwargs
 
-        if not kwargs.get('method'):
+        if not self.request_kwargs.get('method'):
             method = self.method
         else:
-            method = kwargs.pop('method')
+            method = self.request_kwargs.pop('method')
 
         if method == 'GET':
-            self._resp = requests.get(url=self.url, headers=self.headers, cookies=self.cookies, **kwargs)
+            resp = requests.get(url=self.url, headers=self.headers, cookies=self.cookies, **kwargs)
         elif method == 'POST':
-            self._resp = requests.post(url=self.url, data=self.body, headers=self.headers, cookies=self.cookies,
-                                       **kwargs)
+            resp = requests.post(url=self.url, data=self.body, headers=self.headers, cookies=self.cookies, **kwargs)
         elif method == 'HEAD':
-            if self.body:
-                self._resp = requests.head(url=self.url, data=self.body, headers=self.headers, cookies=self.cookies,
-                                           **kwargs)
-            else:
-                self._resp = requests.head(url=self.url, headers=self.headers, cookies=self.cookies, **kwargs)
+            resp = requests.head(url=self.url, data=self.body, headers=self.headers, cookies=self.cookies, **kwargs)
         else:
             raise Exception(f'Method Error ... unsupported method {method}')
 
-        if self._resp.text:
-            if '<html' in self._resp.text and '</html>' in self._resp.text:
-                self._resp_data = self._resp.text
-            else:
-                self._resp_data = self._resp.json()
+        if resp.text:
+            self._resp_data = resp.text if '<html' in resp.text and '</html>' in resp.text else resp.json()
         else:
-            print(self.status)
+            print(STATUS_INTRODUTION.get(resp.status_code))
 
-        return self._resp
+        return resp
 
-    def find(self, *rules, dtype=None):
-        result = Replacer(*rules, data=self.resp_data, mode='search', dtype=dtype)
+    def find(self, *rules, dtype=None, RE=None, re_mode='search', group_index=1):
+        result = Replacer(*rules, data=self.resp_data, mode='search', dtype=dtype, RE=RE, re_mode=re_mode,
+                          group_index=group_index)
         return result.search_result
 
-    def css(self, *rules, extract=True, first=False):
+    def css(self, *rules, extract=True, first=True, extract_key=False):
         selector = Selector(self.resp_data)
         result = {}
 
@@ -239,6 +198,9 @@ class Spider(object):
 
         elif len(rules) == 1 and isinstance(rules[0], dict):
             for key, css_rule in rules[0].items():
+                if extract_key:
+                    key = selector.css(key)
+                    key = key.extract() if not first else key.extract_first()
                 result[key] = selector.css(css_rule)
         else:
             print(f'Rule Format Error ... unsupported rule format {rules}')
@@ -266,19 +228,20 @@ class Spider(object):
         elif len(args) == 1 and isinstance(args[0], requests.models.Response):
             self._cookie_jar.update(args[0].cookies)
 
-        elif len(args) == 2 and isinstance(args[0], str):
+        elif len(args) == 2 and isinstance(args[0], str) and isinstance(args[1], str):
             key, value = args
             self._update(key, value, tag=tag)
 
-        elif len(args) == 2 and isinstance(args[0], list):
+        elif len(args) == 2 and isinstance(args[0], list) and isinstance(args[1], list):
             for key, value in zip(args):
                 self._update(key, value, tag=tag)
 
-        elif len(args) == 2 and isinstance(args[0], dict):
+        elif len(args) == 2 and isinstance(args[0], dict) and isinstance(args[1], dict):
             for key, value in args[0].items():
                 value = args[1].get(value)
                 self._update(key, value, tag=tag)
-        elif len(args) == 3 and isinstance(args[0], list) and isinstance(args[2], dict):
+
+        elif len(args) == 3 and isinstance(args[0], list) and isinstance(args[1], list) and isinstance(args[2], dict):
             for key, value in zip(args[0], args[1]):
                 value = args[2].get(value)
                 self._update(key, value, tag=tag)
@@ -289,12 +252,13 @@ class Spider(object):
 
     def _update(self, key, value, tag=None):
         if not tag:
-            for tag_name, key_list in self.key_dict.items():
-                if key in key_list:
-                    tag = tag_name
-                    break
-        if not tag:
-            tag = 'param' if self.method == 'GET' else 'body'
+            tag_name_list = [tag_name for tag_name, key_list in self.key_dict.items() if key in key_list]
+            assert len(tag_name_list) <= 1, f'Please set tag for update, there are many tag name: {tag_name_list}'
+
+            if tag_name_list:
+                tag = tag_name_list[0]
+            else:
+                tag = 'param' if self.method == 'GET' else 'body'
 
         if tag == 'param':
             self._param_dict[key] = value
@@ -306,6 +270,8 @@ class Spider(object):
             self._cookie_jar.set(key, value)
         elif tag == 'path':
             self._path_dict[key] = value
+        else:
+            print(f'Update faild ... no tag {key}:{value}')
 
     def str_to_dict(self, string, tag=None):
         """ translate string to dict
@@ -315,11 +281,9 @@ class Spider(object):
         rtype: dict
         """
 
-        if not string: return {}
-        if tag == 'path' and self._path_dict: self._path_dict.clear()
-        if tag == 'param' and self._param_dict: self._param_dict.clear()
-        if tag == 'header' and self._header_dict: self._header_dict.clear()
-        if tag == 'cookie' and self._cookie_dict: self._cookie_dict.clear()
+        result = {}
+        if not string: return result
+        if isinstance(string, dict): return string
 
         string = string.strip()
 
@@ -330,10 +294,9 @@ class Spider(object):
             domain = string.split('://', 1)[1].split('/')[0]
             path_list = string.split('://', 1)[1].split('/')[1:]
 
-            self._path_dict['protocol'] = protocol
-            self._path_dict['domain'] = domain
-            self._path_dict = {**self._path_dict, **dict(zip([str(i + 1) for i in range(len(path_list))], path_list))}
-            return self._path_dict
+            result['protocol'] = protocol
+            result['domain'] = domain
+            result = {**result, **dict(zip([str(i + 1) for i in range(len(path_list))], path_list))}
 
         if tag == 'param':
             if self.body: return
@@ -342,50 +305,47 @@ class Spider(object):
             if '?' in string:
                 if '=' in string:
                     string = string.split('?')[-1]
-                    self._param_dict = dict(
+                    result = dict(
                         [_.split('=', 1) for _ in string.split('&') if '=' in _ and not _.endswith('=')])
-                    self._param_dict = {**self._param_dict, **dict([(_.strip('='), '') for _ in string.split('&')
-                                                                    if _.endswith('=') or '=' not in _])}
+                    result = {**result, **dict([(_.strip('='), '') for _ in string.split('&')
+                                                if _.endswith('=') or '=' not in _])}
                 else:
-                    self._param_dict = dict([(string, string) for _ in string.split('&')])
+                    result = dict([(string, string) for _ in string.split('&')])
 
             # sting : 'name=...'
             elif '=' in string:
-                self._param_dict = dict([_.split('=', 1) for _ in string.split('&')])
+                result = dict([_.split('=', 1) for _ in string.split('&')])
             else:
-                self._param_dict = {}
-
-            return self._param_dict
+                result = {}
 
         if tag == 'body':
             if '=' in string and '&' in string:
-                self._body_dict = dict([_.split('=', 1) for _ in string.split('&')])
+                result = dict([_.split('=', 1) for _ in string.split('&')])
             elif '=' in string:
-                self._body_dict = dict([string.split('=')])
+                result = dict([string.split('=')])
             elif ':' in string:
-                self._body_dict = json.loads(string)
-            return self._body_dict
+                result = json.loads(string)
 
         if tag == 'header' or tag == 'cookie':
             split_params = ['\n', ':'] if tag == 'header' else [';', '=']
-            target_dict = {}
             for field in string.split(split_params[0]):
-                keys = target_dict.keys()
+                keys = result.keys()
 
                 key, value = field.split(split_params[1], 1)
                 key, value = [key.strip(), value.strip()]
 
-                value_in_dict = target_dict.get(key)
+                value_in_dict = result.get(key)
                 if key in keys and isinstance(value_in_dict, str):
-                    target_dict[key] = [value_in_dict, value]
+                    result[key] = [value_in_dict, value]
                 elif isinstance(value_in_dict, list):
-                    target_dict[key].append(value)
+                    result[key].append(value)
                 else:
-                    target_dict[key] = value
+                    result[key] = value
 
-            if tag == 'header': self._header_dict = target_dict
-            if tag == 'cookie': self._cookie_jar = cookiejar_from_dict(target_dict)
-            return target_dict
+            if tag == 'header': self._header_dict = result
+            if tag == 'cookie': self._cookie_jar = cookiejar_from_dict(result)
+
+        return result
 
     def preview(self, tag=None):
         d_group = DataGroup(name='Params')

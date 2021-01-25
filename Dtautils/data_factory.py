@@ -1,6 +1,6 @@
 import re
 from copy import deepcopy
-
+import time
 import requests
 
 
@@ -8,55 +8,63 @@ class Replacer(object):
     """ change or replace data from string, list or dict
     """
 
-    def __init__(self, *rules, data=None, replace_key=False, mode='replace', dtype=None):
+    def __init__(self, *rules, data=None, replace_key=False, mode='replace', dtype=None, **kwargs):
         self.rules = rules if data else rules[:-1]
         self._data = deepcopy(data) if data else rules[-1]
         self.replace_key = replace_key
         self.dtype = dtype
         self._search_result = {}
         self.mode = mode
+        self.kwargs = kwargs
+
         if self.mode in ['search', 'delete']:
             self._rule_keys = self.get_rule_keys()
         elif self.mode == 'update':
             self._update_dict = self.rules_to_dict()
 
+        if kwargs.get('re_mode') or kwargs.get('RE'): self.mode = 'search'
+
     @property
     def data(self):
-        return self.process(data=self._data)
+        return self.iter_data(data=self._data)
 
     @property
     def search_result(self):
-        self.process(data=self._data)
-        return self._search_result
+        self.iter_data(data=self._data)
+        values = self._search_result.values()
+        if len(values) == 1:
+            return list(values)[0]
+        else:
+            return self._search_result
 
     # --------------------------------------------------------------------------------- core function
-    def process(self, key=None, data=None):
+    def iter_data(self, key=None, data=None):
         """ 遍历整个数据 for search mode and delete mode
 
         :param data: dict or list
         :return: dict or list
         """
         if self.mode == 'delete':
-            for k in self._rule_keys:
-                try:
-                    del data[k]
-                except:
-                    continue
+            data = self._delete(data)
         elif self.mode == 'search':
             if key and key in self._rule_keys:
                 self.update_search_result(key, data)
 
         if isinstance(data, dict):
             # process dict data here
-
+            _data = {}
             for k, value in data.items():
+                if k == value in [None, '', 'None']: continue
+
                 if not isinstance(value, (list, dict)):
-                    data[k] = self.apply_rule(key=k, value=value)
+                    k, value = self.apply_rule(key=k, value=value)
                 else:
                     if self.mode == 'update' and k in self._update_dict.keys():
-                        data[k] = self._update_dict.get(k)
+                        value = self._update_dict.get(k)
                     else:
-                        data[k] = self.process(k, value)
+                        value = self.iter_data(k, value)
+
+                _data[k] = value
 
         elif isinstance(data, list):
             # process list data here
@@ -64,24 +72,46 @@ class Replacer(object):
             for d in data:
 
                 if not isinstance(d, (list, dict)):
-                    _data.append(self.apply_rule(value=d))
+                    _data.append(self.apply_rule(value=d)[1])
                 else:
-                    _data.append(self.process(data=d))
-
-            return _data
+                    _data.append(self.iter_data(data=d))
 
         elif isinstance(data, str) and self.mode == 'search':
             self.build_item(data)
         else:
             raise Exception('Data Type Error ... data type is unsupported')
 
+        return _data
+
+    def _delete(self, data):
+        for k in self._rule_keys:
+            try:
+                del data[k]
+            except:
+                continue
         return data
 
-    def build_item(self, data, *args):
+    def build_item(self, data):
         if not data: data = self._data
+        RE, re_mode, group_index = self.kwargs.get('RE'), self.kwargs.get('re_mode'), self.kwargs.get('group_index')
+        if RE == 'S': RE = re.S
 
+        start = time.time()
         for key, re_rule in self.rules_to_dict().items():
-            self._search_result[key] = re.findall(re_rule, data, *args)
+            if re_mode == 'search':
+                result = re.search(re_rule, data) if not RE else re.search(re_rule, data, RE)
+                self._search_result[key] = result.group(group_index) if result else ''
+            elif re_mode == 'match':
+                result = re.match(re_rule, data) if not RE else re.match(re_rule, data, RE)
+                self._search_result[key] = result.group(group_index) if result else ''
+            elif re_mode == 'findall':
+                result = re.findall(re_rule, data) if not RE else re.findall(re_rule, data, RE)
+                self._search_result[key] = result
+            else:
+                raise Exception(f'Re Mode Error ... {re_mode}')
+        end = time.time()
+        if end - start > 1:
+            print(f'maybe you need to change your re rule {end - start}')
 
     def apply_rule(self, key=None, value=None):
         """ 处理数据 process other type data here
@@ -97,16 +127,12 @@ class Replacer(object):
             if isinstance(value, (int, float)):
                 return value
 
+            if not value: return key, value
+
             for rule in self.rules:
                 if isinstance(rule, (int, float)): continue
+                key, value = self.iter_rule(rule, key, value)
 
-                if isinstance(rule, (str, list)):
-                    for r in list(rule):
-                        if isinstance(r, (int, float)): continue
-                        value = value.replace(r, '')
-                elif isinstance(rule, dict):
-                    for k, v in rule.items():
-                        value = value.replace(k, v)
 
         elif self.mode == 'update':
             if key and key in self._update_dict.keys():
@@ -115,7 +141,22 @@ class Replacer(object):
         elif self.mode == 'search' and key and key in self._rule_keys:
             self.update_search_result(key, value)
 
-        return value
+        return value if not key else key, value
+
+    def iter_rule(self, rule, key=None, value=None):
+        if not value: value = ''
+        if isinstance(rule, (str, list)):
+            for r in list(rule):
+                if isinstance(r, (int, float)): continue
+                if key and self.replace_key: key = key.replace(r, '')
+                value = value.replace(r, '')
+
+        elif isinstance(rule, dict):
+            for k, v in rule.items():
+                if key and self.replace_key: key = key.replace(k, v)
+                value = value.replace(k, v)
+
+        return key, value
 
     def get_rule_keys(self):
         keys = []
@@ -361,9 +402,9 @@ class DictFactory(object):
                     print(line)
 
 
-def replacer(*rules, data=None, replace_key=False, mode='replace', dtype=None):
-    result = Replacer(*rules, data=data, replace_key=replace_key, mode=mode, dtype=dtype)
-    return result.data if mode != 'search' else result._search_result
+def replacer(*rules, data=None, replace_key=False, mode='replace', dtype=None, **kwargs):
+    result = Replacer(*rules, data=data, replace_key=replace_key, mode=mode, dtype=dtype, **kwargs)
+    return result.data if result.mode != 'search' else result._search_result
 
 
 def printer(data):
