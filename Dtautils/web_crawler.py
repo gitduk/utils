@@ -4,15 +4,12 @@ import re
 from parsel import Selector
 import requests
 from requests.cookies import merge_cookies, cookiejar_from_dict
-from Dtautils.data_factory import Printer, DataGroup, replacer, Replacer
+from Dtautils.data_factory import Printer, DataGroup, DataIter
 
 logger = logging.getLogger(__name__)
 
 
 class Spider(object):
-    """
-    Process requests params
-    """
 
     # todo add cookie jar dict
     def __init__(self, url=None, body=None, header=None, cookie=None, overwrite=True, want=None, post_type=None,
@@ -20,6 +17,9 @@ class Spider(object):
 
         if not header: header = {
             'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.88 Safari/537.36'}
+
+        self.method = 'POST' if body else 'GET'
+        self.post_type = 'form' if body and not post_type else post_type
 
         self._path_dict = self.str_to_dict(url, tag='path')
         self._param_dict = self.str_to_dict(url, tag='param')
@@ -29,9 +29,6 @@ class Spider(object):
 
         cookie_dict = self.str_to_dict(cookie, tag='cookie')
         self._cookie_jar = cookiejar_from_dict(cookie_dict) if cookie else requests.cookies.RequestsCookieJar()
-
-        self.method = 'POST' if body else 'GET'
-        self.post_type = 'form' if body and not post_type else post_type
 
         self._resp = None
         self._resp_data = None
@@ -44,7 +41,7 @@ class Spider(object):
     @property
     def status(self):
         assert self.url, 'Please set a url for Spider'
-        if not self._resp: self.request()
+        if not self._resp: self._resp = self.request()
 
         if not self.want:
             status_code = self._resp.status_code
@@ -184,10 +181,9 @@ class Spider(object):
 
         return resp
 
-    def find(self, *rules, dtype=None, RE=None, re_mode='search', group_index=1):
-        result = Replacer(*rules, data=self.resp_data, mode='search', dtype=dtype, RE=RE, re_mode=re_mode,
-                          group_index=group_index)
-        return result.search_result
+    def find(self, *rules, RE=None, re_mode='search', group_index=0):
+        result = DataIter(*rules, data=self.resp_data, mode='search', RE=RE, re_mode=re_mode, group_index=group_index)
+        return result.result
 
     def css(self, *rules, extract=True, first=True, extract_key=False):
         selector = Selector(self.resp_data)
