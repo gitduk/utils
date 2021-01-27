@@ -9,7 +9,7 @@ class DataIter(object):
     """
 
     def __init__(self, *rules, data=None, replace_key=False, mode='replace', **kwargs):
-        self.rules = rules if data else rules[:-1]
+        self._rules = rules if data else rules[:-1]
         self._data = deepcopy(data) if data else rules[-1]
 
         self.replace_key = replace_key
@@ -30,6 +30,24 @@ class DataIter(object):
         if self.mode in ['replace', 'update', 'delete']: self._result = self.iter_data(self._data)
         if self.mode in ['search']: self.iter_data(self._data)
         return self._result if len(self._result.keys()) != 1 else list(self._result.values())[0]
+
+    @property
+    def rules(self):
+        return self._rules
+
+    @rules.setter
+    def rules(self, rules):
+        self._rules = rules
+        self._rule_keys = self.get_rule_keys()
+        self._update_dict = self.rules_to_dict()
+
+    @property
+    def data(self):
+        return self._data
+
+    @data.setter
+    def data(self, data):
+        self._data = deepcopy(data)
 
     # --------------------------------------------------------------------------------- core function
     def iter_data(self, data=None):
@@ -136,13 +154,13 @@ class DataIter(object):
         for rule in self.rules:
             if isinstance(rule, (str, list)):
                 for rl in rule:
-                    if key and self.replace_key: key = key.replace(rl, '')
-                    value = value.replace(rl, '') if not isinstance(value, (int, float)) else value
+                    if key and self.replace_key: key = key.replace(rl, '') if hasattr(key, 'replace') else key
+                    value = value.replace(rl, '') if hasattr(value, 'replace') else value
 
             elif isinstance(rule, dict):
                 for r_key, r_value in rule.items():
-                    if key and self.replace_key: key = key.replace(r_key, r_value)
-                    value = value.replace(r_key, r_value) if not isinstance(value, (int, float)) else value
+                    if key and self.replace_key: key = key.replace(r_key, r_value) if hasattr(key, 'replace') else key
+                    value = value.replace(r_key, r_value) if hasattr(value, 'replace') else value
             else:
                 print(f'Invalid rule type ... {type(rule)}')
 
