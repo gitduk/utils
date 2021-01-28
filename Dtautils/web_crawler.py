@@ -49,7 +49,7 @@ class Spider(object):
         self._resp_data = Queue()
         self.request_history = []
 
-        if self.url: self.prepare_request = Request(url=self.url, data=self.body, headers=self.headers,
+        if url: self.prepare_request = Request(url=self.url, data=self.body, headers=self.headers,
                                                     cookies=self.cookies,
                                                     method=self.method).prepare()
 
