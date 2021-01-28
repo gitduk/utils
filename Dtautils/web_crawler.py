@@ -50,8 +50,8 @@ class Spider(object):
         self.request_history = []
 
         if url: self.prepare_request = Request(url=self.url, data=self.body, headers=self.headers,
-                                                    cookies=self.cookies,
-                                                    method=self.method).prepare()
+                                               cookies=self.cookies,
+                                               method=self.method).prepare()
 
     @property
     def url(self):
@@ -211,23 +211,37 @@ class Spider(object):
         result = {}
 
         if len(rules) == 1 and isinstance(rules[0], str):
-            result = css_tree.css(rules[0])
+            result = self._get_css_result(css_tree, rules[0])
 
         elif len(rules) == 1 and isinstance(rules[0], dict):
             for key, css_rule in rules[0].items():
                 if extract_key:
-                    key = css_tree.css(key)
+                    key = self._get_css_result(css_tree, key)
                     key = key.extract() if not first else key.extract_first()
-                result[key] = css_tree.css(css_rule)
+                result[key] = self._get_css_result(css_tree, css_rule)
         else:
             print(f'Rule Format Error ... unsupported rule format {rules}')
 
         if extract and isinstance(result, dict):
             for key, value in result.items():
-                result[key] = value.extract() if not first else value.extract_first()
+                result[key] = self._extract_selector(value, first=first)
         elif extract:
-            result = result.extract() if not first else result.extract_first()
+            result = self._extract_selector(result, first=first)
 
+        return result
+
+    def _extract_selector(self, value, first=None):
+        if hasattr(value, 'extract'):
+            return value.extract() if not first else value.extract_first()
+        else:
+            value = [_.extract() if not first else _.extract_first() for _ in value if _.extract()]
+            return value[0] if len(value) == 1 else value
+
+    def _get_css_result(self, css_tree, css_rule):
+        if '|' not in css_rule:
+            result = css_tree.css(css_rule)
+        else:
+            result = [css_tree.css(_) for _ in css_rule.split('|')]
         return result
 
     def update_cookie_from_header(self):
