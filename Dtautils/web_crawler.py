@@ -49,8 +49,9 @@ class Spider(object):
         self._resp_data = Queue()
         self.request_history = []
 
-        self.prepare_request = Request(url=self.url, data=self.body, headers=self.headers, cookies=self.cookies,
-                                       method=self.method).prepare()
+        if self.url: self.prepare_request = Request(url=self.url, data=self.body, headers=self.headers,
+                                                    cookies=self.cookies,
+                                                    method=self.method).prepare()
 
     @property
     def url(self):
