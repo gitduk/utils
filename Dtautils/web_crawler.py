@@ -3,10 +3,13 @@ import logging
 import re
 from parsel import Selector
 import requests
+from requests import Request, Session
 from requests.cookies import merge_cookies, cookiejar_from_dict
 from Dtautils.data_factory import Printer, DataGroup, DataIter
-import Queue
+from queue import Queue
+from threading import Lock
 
+lock = Lock()
 logger = logging.getLogger(__name__)
 
 
@@ -14,7 +17,7 @@ class Spider(object):
 
     # todo add cookie jar dict
     def __init__(self, url=None, body=None, header=None, cookie=None, overwrite=True, name=None, want=None,
-                 post_type=None, **kwargs):
+                 post_type=None, tag=None, auto_update_rule=None, **kwargs):
 
         if not header: header = {
             'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.88 Safari/537.36'}
@@ -28,35 +31,37 @@ class Spider(object):
         self._body_dict = self.str_to_dict(body, tag='body')
         self._header_dict = self.str_to_dict(header, tag='header')
         self.overwrite = overwrite
+        self.auto_update_rule = auto_update_rule
 
         cookie_dict = self.str_to_dict(cookie, tag='cookie')
         self._cookie_jar = cookiejar_from_dict(cookie_dict) if cookie else requests.cookies.RequestsCookieJar()
 
-        self._resp = Queue.Queue()
-        self._resp_data = None
+        self._resp = None
         self.request_kwargs = {}
         self.want = want
         self.kwargs = kwargs
         self.others = None
+        self.tag = tag
+        self.request_count = 0
+        self.session = Session()
 
-    # --------------------------------------------------------------------------------- property
-    @property
-    def status(self):
-        if not self._resp: self._resp = self.request()
+        self._prepare_request = Queue()
+        self._resp_data = Queue()
+        self.request_history = []
 
-        if not self.want:
-            if hasattr(self._resp, 'status_code'): return self._resp.status_code
-            if hasattr(self._resp, 'status'): return self._resp.status
-
-        elif isinstance(self.want, str):
-            result = re.search(self.want, self._resp.text)
-            return result.group() if result else None
-        else:
-            raise Exception(f'Unsupported want format ... {self.want}')
+        self.prepare_request = Request(url=self.url, data=self.body, headers=self.headers, cookies=self.cookies,
+                                       method=self.method).prepare()
 
     @property
     def url(self):
         return self.path + self.param if self.path else ''
+
+    @url.setter
+    def url(self, url):
+        self._path_dict = self.str_to_dict(url, tag='path')
+        self._param_dict = self.str_to_dict(url, tag='param')
+
+        if self.headers.get('Host'): self.update('Host', self._path_dict.get('domain'), tag='header')
 
     @property
     def path(self):
@@ -67,11 +72,19 @@ class Spider(object):
         sub_path = '/'.join([value for key, value in self._path_dict.items() if key not in ['protocol', 'domain']])
         return f'{protocol}://{domain}/{sub_path}'
 
+    @path.setter
+    def path(self, path):
+        self._path_dict = self.str_to_dict(path, tag='path')
+
     @property
     def param(self):
         if not self._param_dict: return ''
         param_str = '&'.join([f'{key}={value}' for key, value in self._param_dict.items()])
         return '?' + param_str
+
+    @param.setter
+    def param(self, params):
+        self._param_dict = self.str_to_dict(params, tag='param')
 
     @property
     def body(self):
@@ -82,13 +95,27 @@ class Spider(object):
         else:
             return json.dumps(self._body_dict)
 
+    @body.setter
+    def body(self, body):
+        self._body_dict = self.str_to_dict(body, tag='body')
+
     @property
     def headers(self):
         return self._header_dict
 
+    @headers.setter
+    def headers(self, header):
+        self._header_dict = self.str_to_dict(header, tag='header')
+
     @property
     def cookies(self):
         return self._cookie_jar.get_dict()
+
+    @cookies.setter
+    def cookies(self, cookie):
+        cookie_dict = self.str_to_dict(cookie, tag='cookie')
+        self._cookie_jar = cookiejar_from_dict(cookie_dict=cookie_dict, cookiejar=self._cookie_jar,
+                                               overwrite=self.overwrite)
 
     @property
     def cookie_jar(self):
@@ -105,104 +132,92 @@ class Spider(object):
         }
 
     @property
-    def resp(self):
-        if not self._resp: self._resp = self.request()
-        return self._resp
+    def prepare_request(self):
+        return self._prepare_request.get() if not self._prepare_request.empty() else None
+
+    @prepare_request.setter
+    def prepare_request(self, req):
+        self._prepare_request.put(req)
 
     @property
-    def resp_data(self):
-        if not self._resp_data: self.request()
-        return self._resp_data
+    def request_info_failed(self):
+        msg = f'Website page downloaded do not content {self.want} ...' if self.want else 'Website page download error ...'
+        status = self.status if not self.want else self.status_code
+        return f'{msg} {self.url}\nstatus: {status}\n{self.resp_data}'
 
-    # --------------------------------------------------------------------------------- setter
-    @url.setter
-    def url(self, url):
-        self._path_dict = self.str_to_dict(url, tag='path')
-        self._param_dict = self.str_to_dict(url, tag='param')
-
-        if self.headers.get('Host'): self.update('Host', self._path_dict.get('domain'), tag='header')
-
-    @path.setter
-    def path(self, path):
-        self._path_dict = self.str_to_dict(path, tag='path')
-
-    @param.setter
-    def param(self, params):
-        self._param_dict = self.str_to_dict(params, tag='param')
-
-    @body.setter
-    def body(self, body):
-        self._body_dict = self.str_to_dict(body, tag='body')
-
-    @headers.setter
-    def headers(self, header):
-        self._header_dict = self.str_to_dict(header, tag='header')
-
-    @cookies.setter
-    def cookies(self, cookie):
-        cookie_dict = self.str_to_dict(cookie, tag='cookie')
-        self._cookie_jar = cookiejar_from_dict(cookie_dict=cookie_dict, cookiejar=self._cookie_jar,
-                                               overwrite=self.overwrite)
+    @property
+    def resp(self):
+        if not self._resp: self.request()
+        return self._resp
 
     @resp.setter
     def resp(self, resp):
-        assert resp.text, f'Response text is null ... \n{resp.url}'
         self._resp = resp
-        self._resp_data = resp.text if '<html' in resp.text and '</html>' in resp.text else resp.json()
+
+        if self.status == 200 or self.status == self.want:
+            self._resp_data.put(resp.text if '<html' in resp.text and '</html>' in resp.text else resp.json())
+        else:
+            print(self.request_info_failed)
+
+    @property
+    def resp_data(self):
+        if self._resp_data.empty(): self.request()
+        return self._resp_data.get() if not self._resp_data.empty() else None
 
     @resp_data.setter
     def resp_data(self, resp_data):
-        self._resp_data = resp_data
+        self._resp_data.put(resp_data)
 
-    # --------------------------------------------------------------------------------- core functions
+    @property
+    def status(self):
+        if not self._resp: self.request()
+
+        if not self.want:
+            return self.status_code
+
+        elif isinstance(self.want, str):
+            result = re.search(self.want, self._resp.text)
+            return result.group() if result else None
+        else:
+            raise Exception(f'Unsupported want format ... {self.want}')
+
+    @property
+    def status_code(self):
+        if hasattr(self._resp, 'status_code'): return self._resp.status_code
+        if hasattr(self._resp, 'status'): return self._resp.status
+
     def request(self, **kwargs):
         assert self.url, 'Please set a url for Spider'
-        self.request_kwargs = kwargs if kwargs else self.request_kwargs
 
-        if not self.request_kwargs.get('method'):
-            method = self.method
+        self.request_kwargs = {**self.request_kwargs, **kwargs}
+
+        prepared_request = self.prepare_request
+        if prepared_request:
+            resp = self.session.send(prepared_request, **self.request_kwargs)
+            self.request_count += 1
+            self.resp = resp
+            return resp
         else:
-            method = self.request_kwargs.pop('method')
-
-        if method == 'GET':
-            resp = requests.get(url=self.url, headers=self.headers, cookies=self.cookies, **kwargs)
-        elif method == 'POST':
-            resp = requests.post(url=self.url, data=self.body, headers=self.headers, cookies=self.cookies, **kwargs)
-        elif method == 'HEAD':
-            resp = requests.head(url=self.url, data=self.body, headers=self.headers, cookies=self.cookies, **kwargs)
-        else:
-            raise Exception(f'Method Error ... unsupported method {method}')
-
-        if resp.text:
-            self._resp_data = resp.text if '<html' in resp.text and '</html>' in resp.text else resp.json()
-        else:
-            print(STATUS_INTRODUTION.get(resp.status_code))
-
-        return resp
+            msg = 'No prepared request error ... spider prepare request queue is empty, please set prepare True in update method'
+            print(msg)
 
     def find(self, *rules, RE=None, re_mode='search', group_index=1):
         result = DataIter(*rules, data=self.resp_data, mode='search', RE=RE, re_mode=re_mode, group_index=group_index)
         return result.result
 
     def css(self, *rules, extract=True, first=True, extract_key=False):
-        if (self.want and not self.status) or (not self.want and self.status != 200):
-            msg = f'Website page downloaded do not content {self.want} ...' if self.want else 'Website page download error ...'
-            status = self.status if not self.want else self.resp.status_code
-            print(f'{msg} {self.url}\nstatus: {status}\n{self.resp_data}')
-            return self.resp_data
-
-        selector = Selector(self.resp_data)
+        css_tree = Selector(self.resp_data)
         result = {}
 
         if len(rules) == 1 and isinstance(rules[0], str):
-            result = selector.css(rules[0])
+            result = css_tree.css(rules[0])
 
         elif len(rules) == 1 and isinstance(rules[0], dict):
             for key, css_rule in rules[0].items():
                 if extract_key:
-                    key = selector.css(key)
+                    key = css_tree.css(key)
                     key = key.extract() if not first else key.extract_first()
-                result[key] = selector.css(css_rule)
+                result[key] = css_tree.css(css_rule)
         else:
             print(f'Rule Format Error ... unsupported rule format {rules}')
 
@@ -220,7 +235,7 @@ class Spider(object):
             cookie_dict = self.str_to_dict(cookie, tag='cookie')
             self.update(cookie_dict, tag='cookie')
 
-    def update(self, *args, tag=None, request=False):
+    def update(self, *args, tag=None, prepare=False):
         """ update tag use args
 
         tag: param, body, header, cookie
@@ -255,17 +270,11 @@ class Spider(object):
         else:
             raise Exception(f'Update Error ... unsupported update args {args}')
 
-        if request: self.request(**self.request_kwargs)
+        if prepare: self.prepare_request = Request(url=self.url, data=self.body, headers=self.headers,
+                                                   cookies=self.cookies, method=self.method).prepare()
 
     def _update(self, key, value, tag=None):
-        if not tag:
-            tag_name_list = [tag_name for tag_name, key_list in self.key_dict.items() if key in key_list]
-            assert len(tag_name_list) <= 1, f'Please set tag for update, there are many tag name: {tag_name_list}'
-
-            if tag_name_list:
-                tag = tag_name_list[0]
-            else:
-                tag = 'param' if self.method == 'GET' else 'body'
+        if not tag: tag = self._get_tag(key)
 
         if tag == 'param':
             self._param_dict[key] = value
@@ -279,6 +288,19 @@ class Spider(object):
             self._path_dict[key] = value
         else:
             print(f'Update faild ... no tag {key}:{value}')
+
+    def _get_tag(self, key):
+        if self.tag:
+            tag = self.tag
+        else:
+            tag_name_list = [tag_name for tag_name, key_list in self.key_dict.items() if key in key_list]
+            assert len(tag_name_list) <= 1, f'Please set tag for update, there are many tag name: {tag_name_list}'
+
+            if tag_name_list:
+                tag = tag_name_list[0]
+            else:
+                tag = 'param' if self.method == 'GET' else 'body'
+        return tag
 
     def str_to_dict(self, string, tag=None):
         """ translate string to dict
