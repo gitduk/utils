@@ -14,10 +14,9 @@ logger = logging.getLogger(__name__)
 
 
 class Spider(object):
-
     # todo add cookie jar dict
     def __init__(self, url=None, body=None, header=None, cookie=None, overwrite=True, name=None, want=None,
-                 post_type=None, tag=None, auto_update_rule=None, **kwargs):
+                 post_type=None, tag=None, **kwargs):
 
         if not header: header = {
             'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.88 Safari/537.36'}
@@ -27,20 +26,18 @@ class Spider(object):
         self.post_type = 'form' if body and not post_type else post_type
 
         self._path_dict = self.str_to_dict(url, tag='path')
-        self._param_dict = self.str_to_dict(url, tag='param')
         self._body_dict = self.str_to_dict(body, tag='body')
+        self._param_dict = self.str_to_dict(url, tag='param')
         self._header_dict = self.str_to_dict(header, tag='header')
         self.overwrite = overwrite
-        self.auto_update_rule = auto_update_rule
 
         cookie_dict = self.str_to_dict(cookie, tag='cookie')
         self._cookie_jar = cookiejar_from_dict(cookie_dict) if cookie else requests.cookies.RequestsCookieJar()
 
         self._resp = None
-        self.request_kwargs = {}
         self.want = want
         self.kwargs = kwargs
-        self.others = None
+        self.request_kwargs = kwargs.get('request_kwargs') or {}
         self.tag = tag
         self.request_count = 0
         self.session = Session()
@@ -73,6 +70,10 @@ class Spider(object):
         sub_path = '/'.join([value for key, value in self._path_dict.items() if key not in ['protocol', 'domain']])
         return f'{protocol}://{domain}/{sub_path}'
 
+    @property
+    def path_dict(self):
+        return self._path_dict
+
     @path.setter
     def path(self, path):
         self._path_dict = self.str_to_dict(path, tag='path')
@@ -82,6 +83,10 @@ class Spider(object):
         if not self._param_dict: return ''
         param_str = '&'.join([f'{key}={value}' for key, value in self._param_dict.items()])
         return '?' + param_str
+
+    @property
+    def param_dict(self):
+        return self._param_dict
 
     @param.setter
     def param(self, params):
@@ -95,6 +100,10 @@ class Spider(object):
             return '&'.join([f'{key}={value}' for key, value in self._body_dict.items()])
         else:
             return json.dumps(self._body_dict)
+
+    @property
+    def body_dict(self):
+        return self._body_dict
 
     @body.setter
     def body(self, body):
@@ -343,7 +352,7 @@ class Spider(object):
             result = {**result, **dict(zip([str(i + 1) for i in range(len(path_list))], path_list))}
 
         if tag == 'param':
-            if self.body: return
+            if self.body: return result
 
             # sting : 'https://...?...'
             if '?' in string:
