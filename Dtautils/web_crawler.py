@@ -21,7 +21,8 @@ class SpiderUpdater(object):
             'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.88 Safari/537.36'}
 
         self.method = 'POST' if body else 'GET'
-        self.post_type = 'form' if body and '=' in body else 'payload'
+        self.post_type = None
+        if body: self.post_type = 'form' if '=' in body else 'payload'
 
         self._path_dict = self._string_to_dict(url, tag='path')
         self._body_dict = self._string_to_dict(body, tag='body')
