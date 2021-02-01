@@ -414,3 +414,7 @@ class Spider(SpiderUpdater, SpiderDownloader, SpiderExtractor):
 
         return SpiderExtractor.find(self, *rules, data=data, match_mode=match_mode, re_mode=re_mode,
                                     group_index=group_index)
+
+    def css(self, *rules, data=None, extract=True, first=True, extract_key=False):
+        if not data: data = self.resp.text
+        return SpiderExtractor.css(self, *rules, data=data, extract=extract, first=first, extract_key=extract_key)
