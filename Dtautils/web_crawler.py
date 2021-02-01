@@ -15,10 +15,12 @@ logger = logging.getLogger(__name__)
 
 
 class SpiderUpdater(object):
+    UA = {
+        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.88 Safari/537.36'}
+
     def __init__(self, url=None, body=None, header=None, cookie=None, overwrite=True):
 
-        if not header: header = {
-            'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.88 Safari/537.36'}
+        if not header: header = self.UA
 
         self.method = 'POST' if body else 'GET'
         self.post_type = None
@@ -27,7 +29,7 @@ class SpiderUpdater(object):
         self._path_dict = self._string_to_dict(url, tag='path')
         self._body_dict = self._string_to_dict(body, tag='body')
         self._param_dict = self._string_to_dict(url, tag='param')
-        self._header_dict = self._string_to_dict(header, tag='header')
+        self._header_dict = {**self.UA, **self._string_to_dict(header, tag='header')}
         self.overwrite = overwrite
 
         cookie_dict = self._string_to_dict(cookie, tag='cookie')
@@ -337,6 +339,7 @@ class SpiderDownloader(object):
         self.session = Session()
         self._prepare_request_queue = Queue()
         self._resp_queue = Queue()
+        self.response = None
 
         self.timeout = timeout
         self.stream = stream
@@ -356,8 +359,11 @@ class SpiderDownloader(object):
 
     @property
     def resp(self):
-        if self._resp_queue.empty(): self.request()
-        return self._resp_queue.get() if not self._resp_queue.empty() else None
+        if self._resp_queue.empty():
+            self.response = self.request()
+        else:
+            self.response = self._resp_queue.get()
+        return self.response if not self._resp_queue.empty() else None
 
     @resp.setter
     def resp(self, resp):
@@ -404,17 +410,21 @@ class Spider(SpiderUpdater, SpiderDownloader, SpiderExtractor):
             self._prepare_request_queue.put(prepared_request)
 
     def find(self, *rules, data=None, match_mode=None, re_mode='search', group_index=None):
-        if not data:
-            resp = self.resp
-            data = resp.text
-            if data:
-                if '<html' not in data and '</html>' not in data: data = json.loads(data)
-            else:
-                print(f'response body is empty!\n{resp}')
+        if not data: data = self.get_data()
 
         return SpiderExtractor.find(self, *rules, data=data, match_mode=match_mode, re_mode=re_mode,
                                     group_index=group_index)
 
     def css(self, *rules, data=None, extract=True, first=True, extract_key=False):
-        if not data: data = self.resp.text
+        if not data: data = self.get_data()
         return SpiderExtractor.css(self, *rules, data=data, extract=extract, first=first, extract_key=extract_key)
+
+    def get_data(self):
+        resp = self.resp
+        data = resp.text
+        if data:
+            if '<html' not in data and '</html>' not in data: data = json.loads(data)
+        else:
+            print(f'response body is empty!\n{resp}')
+
+        return data
