@@ -29,7 +29,10 @@ class DataIter(object):
     def result(self):
         if self.mode in ['replace', 'update', 'delete']: self._result = self.iter_data(self._data)
         if self.mode in ['search']: self.iter_data(self._data)
-        return self._result if len(self._result.keys()) != 1 else list(self._result.values())[0]
+        if isinstance(self._result, dict):
+            return self._result if len(self._result.keys()) != 1 else list(self._result.values())[0]
+        else:
+            return self._result
 
     @property
     def rules(self):
