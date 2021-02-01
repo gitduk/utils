@@ -117,19 +117,23 @@ class DataIter(object):
 
     def _process_string(self, data):
         if not data: data = self._data
-        RE, re_mode, group_index = self.kwargs.get('RE'), self.kwargs.get('re_mode'), self.kwargs.get('group_index')
-        if RE == 'S': RE = re.S
+        match_mode, re_mode, group_index = self.kwargs.get('match_mode'), self.kwargs.get('re_mode'), self.kwargs.get(
+            'group_index')
+        if match_mode == 'S': match_mode = re.S
 
         start = time.time()
         for key, re_rule in self.rules_to_dict().items():
             if re_mode == 'search':
-                result = re.search(re_rule, data) if not RE else re.search(re_rule, data, RE)
-                self._result[key] = result.group(group_index) if result else ''
+                result = re.search(re_rule, data) if not match_mode else re.search(re_rule, data, match_mode)
+                if not group_index:
+                    self._result[key] = result.group() if result else ''
+                else:
+                    self._result[key] = result.group(group_index) if result else ''
             elif re_mode == 'match':
-                result = re.match(re_rule, data) if not RE else re.match(re_rule, data, RE)
+                result = re.match(re_rule, data) if not match_mode else re.match(re_rule, data, match_mode)
                 self._result[key] = result.group(group_index) if result else ''
             elif re_mode == 'findall':
-                result = re.findall(re_rule, data) if not RE else re.findall(re_rule, data, RE)
+                result = re.findall(re_rule, data) if not match_mode else re.findall(re_rule, data, match_mode)
                 self._result[key] = result
             else:
                 raise Exception(f'Re Mode Error ... {re_mode}')
