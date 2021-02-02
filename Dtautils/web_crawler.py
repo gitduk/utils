@@ -225,7 +225,7 @@ class SpiderUpdater(object):
             result = {**result, **dict(zip(path_list, path_list))}
 
         if tag == 'param':
-            if self.body: return result
+            if self.method == 'POST': return result
 
             if '?' in string:
                 if '=' in string:
