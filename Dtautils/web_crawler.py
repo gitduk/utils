@@ -1,6 +1,5 @@
 import json
 import logging
-
 import urllib3
 from parsel import Selector
 import requests
@@ -16,7 +15,8 @@ logger = logging.getLogger(__name__)
 
 class SpiderUpdater(object):
     UA = {
-        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.88 Safari/537.36'}
+        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.88 Safari/537.36'
+    }
 
     def __init__(self, url=None, body=None, header=None, cookie=None, overwrite=True):
 
