@@ -379,7 +379,7 @@ class SpiderDownloader(object):
             self.response = self.request()
         else:
             self.response = self._resp_queue.get()
-        return self.response if not self._resp_queue.empty() else None
+        return self.response
 
     @resp.setter
     def resp(self, resp):
