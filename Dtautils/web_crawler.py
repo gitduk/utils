@@ -303,7 +303,7 @@ class SpiderExtractor(object):
                           group_index=group_index)
         return result.result
 
-    def css(self, *rules, data=None, extract=True, first=True, extract_key=False):
+    def css(self, *rules, data=None, extract=True, first=True, replace_rule=None, extract_key=False):
 
         css_tree = Selector(data)
         result = {}
@@ -325,6 +325,10 @@ class SpiderExtractor(object):
                 result[key] = self._extract_selector(value, first=first)
         elif extract:
             result = self._extract_selector(result, first=first)
+
+        if replace_rule:
+            diter = DataIter(replace_rule, data=result)
+            result = diter.result
 
         return result
 
@@ -423,9 +427,10 @@ class Spider(SpiderUpdater, SpiderDownloader, SpiderExtractor):
         SpiderDownloader.__init__(self, timeout=timeout, stream=stream, verify=verify, allow_redirects=allow_redirects,
                                   proxies=proxies, cert=cert)
 
-        prepare_request = Request(url=self.url, data=self.body, headers=self.headers, cookies=self.cookies,
-                                  method=self.method).prepare()
-        self._prepare_request_queue.put(prepare_request)
+        if url:
+            prepare_request = Request(url=self.url, data=self.body, headers=self.headers, cookies=self.cookies,
+                                      method=self.method).prepare()
+            self._prepare_request_queue.put(prepare_request)
 
     def update(self, *args, tag=None, prepare=False):
         prepared_request = SpiderUpdater.update(self, *args, tag=tag, prepare=prepare)
@@ -445,10 +450,8 @@ class Spider(SpiderUpdater, SpiderDownloader, SpiderExtractor):
         return SpiderExtractor.find(self, *rules, data=data, match_mode=match_mode, re_mode=re_mode,
                                     group_index=group_index)
 
-    def css(self, *rules, data=None, extract=True, first=True, extract_key=False, replace=None):
+    def css(self, *rules, data=None, extract=True, first=True, replace_rule=None, extract_key=False):
         if not data: data = self.resp_data
-        result = SpiderExtractor.css(self, *rules, data=data, extract=extract, first=first, extract_key=extract_key)
-        if replace:
-            diter = DataIter(replace, data=result)
-            result = diter.result
+        result = SpiderExtractor.css(self, *rules, data=data, extract=extract, first=first, replace_rule=replace_rule,
+                                     extract_key=extract_key)
         return result
