@@ -35,6 +35,7 @@ class SpiderUpdater(object):
         }
 
         self.overwrite = overwrite
+        self.referer = None
 
     @property
     def url(self):
@@ -99,6 +100,7 @@ class SpiderUpdater(object):
 
     @property
     def headers(self):
+        if self.referer: self._spider['header']['referer'] = self.referer
         return self._spider.get('header')
 
     @headers.setter
@@ -181,6 +183,8 @@ class SpiderUpdater(object):
 
     def _update(self, key, value, tag=None):
         if not tag: tag = self._auto_set_tag(key)
+
+        self.referer = self.url
 
         assert tag in ['path', 'param', 'body', 'header', 'cookie'], f'Update failed ... no tag {key}:{value}'
 
@@ -380,10 +384,9 @@ class SpiderDownloader(object):
 
     @property
     def resp(self):
-        if self._resp_queue.empty():
-            self.response = self.request()
-        else:
-            self.response = self._resp_queue.get()
+        if self._resp_queue.empty(): self.request()
+
+        self.response = self._resp_queue.get()
         return self.response
 
     @resp.setter
