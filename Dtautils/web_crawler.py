@@ -1,5 +1,7 @@
 import json
 import logging
+import time
+
 import urllib3
 from parsel import Selector
 import requests
@@ -359,8 +361,7 @@ class SpiderExtractor(object):
 
 
 class SpiderDownloader(object):
-    def __init__(self, timeout=10, stream=False, verify=None, allow_redirects=True, proxies=None, hooks=None,
-                 cert=None):
+    def __init__(self, timeout=10, stream=False, verify=None, allow_redirects=True, proxies=None, wait=None, cert=None):
         self.download_count = 0
         self.session = Session()
         self._prepare_request_queue = Queue()
@@ -373,6 +374,7 @@ class SpiderDownloader(object):
         self.allow_redirects = allow_redirects
         self.proxies = proxies
         self.cert = cert
+        self.wait = wait
 
     @property
     def prepare_request(self):
@@ -410,6 +412,7 @@ class SpiderDownloader(object):
                 'download': self.download_count}
 
     def request(self, **kwargs):
+        if self.wait: time.sleep(self.wait)
         prepared_request = self.prepare_request
         if prepared_request:
             kwargs = {'timeout': self.timeout,
@@ -428,12 +431,12 @@ class SpiderDownloader(object):
 
 class Spider(SpiderUpdater, SpiderDownloader, SpiderExtractor):
     def __init__(self, url=None, body=None, header=None, cookie=None, overwrite=True, timeout=10, stream=False,
-                 verify=None, allow_redirects=True, proxies=None, cert=None):
+                 verify=None, allow_redirects=True, proxies=None, wait=None, cert=None):
 
         super(Spider, self).__init__(url=url, body=body, header=header, cookie=cookie, overwrite=overwrite)
 
         SpiderDownloader.__init__(self, timeout=timeout, stream=stream, verify=verify, allow_redirects=allow_redirects,
-                                  proxies=proxies, cert=cert)
+                                  proxies=proxies, wait=wait, cert=cert)
 
         if url:
             prepare_request = Request(url=self.url, data=self.body, headers=self.headers, cookies=self.cookies,
