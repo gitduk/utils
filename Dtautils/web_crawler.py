@@ -298,25 +298,29 @@ class SpiderUpdater(object):
 
 
 class SpiderExtractor(object):
-    def find(self, *rules, data=None, match_mode=None, re_mode='search', group_index=None):
-        result = DataIter(*rules, data=data, mode='search', match_mode=match_mode, re_mode=re_mode,
+    def find(self, *rules, data=None, match_mode=None, re_method='search', group_index=None):
+        result = DataIter(*rules, data=data, mode='search', match_mode=match_mode, re_method=re_method,
                           group_index=group_index)
         return result.result
 
-    def css(self, *rules, data=None, extract=True, first=True, replace_rule=None, extract_key=False):
+    def extractor(self, *rules, data=None, extract=True, first=False, replace_rule=None, extract_key=False,
+                  extract_method=None):
 
-        css_tree = Selector(data)
+        assert extract_method in ['css', 'xpath'], f'Unsupported extract method: {extract_method}'
+        tree = Selector(data)
+
         result = {}
 
         if len(rules) == 1 and isinstance(rules[0], str):
-            result = self._get_css_result(css_tree, rules[0])
+            result = self._get_result(tree, rules[0], method=extract_method)
+            ...
 
         elif len(rules) == 1 and isinstance(rules[0], dict):
-            for key, css_rule in rules[0].items():
+            for key, rule in rules[0].items():
                 if extract_key:
-                    key = self._get_css_result(css_tree, key)
+                    key = self._get_result(tree, key, method=extract_method)
                     key = key.extract() if not first else key.extract_first()
-                result[key] = self._get_css_result(css_tree, css_rule)
+                result[key] = self._get_result(tree, rule, method=extract_method)
         else:
             print(f'Rule Format Error ... unsupported rule format {rules}')
 
@@ -341,11 +345,12 @@ class SpiderExtractor(object):
             return value[0] if len(value) == 1 else value
 
     @staticmethod
-    def _get_css_result(css_tree, css_rule):
-        if '|' not in css_rule:
-            result = css_tree.css(css_rule)
+    def _get_result(tree, rule, method=None):
+        if '|' not in rule:
+            result = tree.css(rule) if method == 'css' else tree.xpath(rule)
         else:
-            result = [css_tree.css(_) for _ in css_rule.split('|')]
+            result = [tree.css(_) if method == 'css' else tree.xpath(rule) for _ in rule.split('|')]
+
         return result
 
 
@@ -444,14 +449,21 @@ class Spider(SpiderUpdater, SpiderDownloader, SpiderExtractor):
         prepared_request = SpiderUpdater.update_from_dict(self, *args, tag=tag, prepare=prepare)
         if prepare: self._prepare_request_queue.put(prepared_request)
 
-    def find(self, *rules, data=None, match_mode=None, re_mode='search', group_index=None):
+    def find(self, *rules, data=None, match_mode=None, re_method='search', group_index=None):
         if not data: data = self.resp_data
 
-        return SpiderExtractor.find(self, *rules, data=data, match_mode=match_mode, re_mode=re_mode,
+        return SpiderExtractor.find(self, *rules, data=data, match_mode=match_mode, re_method=re_method,
                                     group_index=group_index)
 
     def css(self, *rules, data=None, extract=True, first=True, replace_rule=None, extract_key=False):
         if not data: data = self.resp_data
-        result = SpiderExtractor.css(self, *rules, data=data, extract=extract, first=first, replace_rule=replace_rule,
-                                     extract_key=extract_key)
+        result = SpiderExtractor.extractor(self, *rules, data=data, extract_method='css', extract=extract, first=first,
+                                           replace_rule=replace_rule,
+                                           extract_key=extract_key)
+        return result
+
+    def xpath(self, *rules, data=None, replace_rule=None, extract_key=False):
+        if not data: data = self.resp_data
+        result = SpiderExtractor.extractor(self, *rules, data=data, extract_method='xpath', replace_rule=replace_rule,
+                                           extract_key=extract_key)
         return result

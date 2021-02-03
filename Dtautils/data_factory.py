@@ -108,7 +108,7 @@ class DataIter(object):
         elif passing == 'list':
             return self._process_list_value(value)
         else:
-            return self._process_string(value)
+            return self._process_text(value)
 
     def _process_dict_value(self, key, value):
         # process value in dict here, value is not list or dict
@@ -118,28 +118,41 @@ class DataIter(object):
         # process value in list here, value is not list or dict
         return self.replacer(value=value) if self.mode == 'replace' else value
 
-    def _process_string(self, data):
+    def _process_text(self, data):
         if not data: data = self._data
-        match_mode, re_mode, group_index = self.kwargs.get('match_mode'), self.kwargs.get('re_mode'), self.kwargs.get(
-            'group_index')
-        if match_mode == 'S': match_mode = re.S
+        match_mode, re_method, group_index = self.kwargs.get('match_mode'), self.kwargs.get(
+            're_method'), self.kwargs.get('group_index')
+
+        match_mode_dict = {
+            'S': re.S,
+            'M': re.M,
+            'I': re.I,
+            'L': re.L,
+            'U': re.U,
+            'X': re.X
+        }
+        method_dict = {
+            'search': re.search,
+            'match': re.match,
+            'findall': re.findall
+        }
+        match_mode = match_mode_dict.get(match_mode)
 
         start = time.time()
         for key, re_rule in self.rules_to_dict().items():
-            if re_mode == 'search':
-                result = re.search(re_rule, data) if not match_mode else re.search(re_rule, data, match_mode)
+            result = method_dict.get(re_method)(re_rule, data, flags=match_mode or 0)
+
+            if re_method == 'search':
                 if not group_index:
                     self._result[key] = result.group() if result else ''
                 else:
                     self._result[key] = result.group(group_index) if result else ''
-            elif re_mode == 'match':
-                result = re.match(re_rule, data) if not match_mode else re.match(re_rule, data, match_mode)
+            elif re_method == 'match':
                 self._result[key] = result.group(group_index) if result else ''
-            elif re_mode == 'findall':
-                result = re.findall(re_rule, data) if not match_mode else re.findall(re_rule, data, match_mode)
+            elif re_method == 'findall':
                 self._result[key] = result
             else:
-                raise Exception(f'Re Mode Error ... {re_mode}')
+                raise Exception(f'Re Mode Error ... {re_method}')
         end = time.time()
         if end - start > 1:
             print(f'maybe you need to change your re rule {end - start}')
