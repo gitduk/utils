@@ -18,11 +18,11 @@ URL = 'https://github.com/gitduk/utils'
 EMAIL = 'wdkany@gmail.com'
 AUTHOR = 'kaige'
 REQUIRES_PYTHON = '>=3.6.0'
-VERSION = '0.6.2'
+VERSION = '0.6.3'
 
 # What packages are required for this module to be executed?
 REQUIRED = [
-    'requests', 'logging'
+    'requests', 'logging', 'parsel'
 ]
 
 # What packages are optional?

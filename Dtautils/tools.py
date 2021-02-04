@@ -1,12 +1,16 @@
 import heapq
+import time
+from functools import wraps
 
 
 class PriorityQueue:
     def __init__(self):
         self._queue = []
+        self.index = 0
 
     def push(self, item, priority):
-        heapq.heappush(self._queue, (priority, item))
+        heapq.heappush(self._queue, (priority, self.index, item))
+        self.index += 1
 
     def pop(self):
         return heapq.heappop(self._queue)[-1]
@@ -16,3 +20,15 @@ class PriorityQueue:
 
     def qsize(self):
         return len(self._queue)
+
+
+def fn_timer(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        start = time.time()
+        result = func(*args, **kwargs)
+        end = time.time()
+        print("Function [{}] Spend {:.3f} s".format(func.__name__, end - start))
+        return result
+
+    return wrapper
