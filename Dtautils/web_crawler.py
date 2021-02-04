@@ -8,6 +8,7 @@ import requests
 from requests import Request, Session
 from requests.cookies import cookiejar_from_dict, create_cookie
 from Dtautils.data_factory import Printer, DataGroup, DataIter
+from Dtautils.tools import PriorityQueue
 from queue import Queue
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -152,8 +153,11 @@ class SpiderUpdater(object):
         assert False not in [isinstance(_, str) for _ in args], f'args must be str, get {args}'
         key, value = args
         self._update(key, value, tag=tag)
-        if prepare: return Request(url=self.url, data=self.body, headers=self.headers, cookies=self.cookies,
-                                   method=self.method).prepare()
+        if prepare:
+            prepared_request = Request(url=self.url, data=self.body, headers=self.headers, cookies=self.cookies,
+                                       method=self.method).prepare()
+            prepared_request.priority = 0
+            return prepared_request
 
     def update_from_list(self, *args, tag=None, prepare=False):
         assert len(args) == 2 and False not in [isinstance(_, list) for _ in args], f'args must be list, get {args}'
@@ -161,8 +165,11 @@ class SpiderUpdater(object):
         for key, value in zip(args):
             self._update(key, value, tag=tag)
 
-        if prepare: return Request(url=self.url, data=self.body, headers=self.headers, cookies=self.cookies,
-                                   method=self.method).prepare()
+        if prepare:
+            prepared_request = Request(url=self.url, data=self.body, headers=self.headers, cookies=self.cookies,
+                                       method=self.method).prepare()
+            prepared_request.priority = 0
+            return prepared_request
 
     def update_from_dict(self, *args, tag=None, prepare=False):
         if len(args) == 1:
@@ -180,8 +187,11 @@ class SpiderUpdater(object):
         else:
             raise Exception(f'Update Error ... unsupported update args {args}')
 
-        if prepare: return Request(url=self.url, data=self.body, headers=self.headers, cookies=self.cookies,
-                                   method=self.method).prepare()
+        if prepare:
+            prepared_request = Request(url=self.url, data=self.body, headers=self.headers, cookies=self.cookies,
+                                       method=self.method).prepare()
+            prepared_request.priority = 0
+            return prepared_request
 
     def _update(self, key, value, tag=None):
         if not tag: tag = self._auto_set_tag(key)
@@ -361,12 +371,12 @@ class SpiderExtractor(object):
 
 
 class SpiderDownloader(object):
-    def __init__(self, timeout=10, stream=False, verify=None, allow_redirects=True, proxies=None, wait=None, cert=None):
+    def __init__(self, timeout=10, stream=False, verify=None, allow_redirects=True, proxies=None, wait=None, cert=None,
+                 retry=0, not_retry_code=None):
         self.download_count = 0
         self.session = Session()
-        self._prepare_request_queue = Queue()
+        self._prepare_request_queue = PriorityQueue()
         self._resp_queue = Queue()
-        self.response = None
 
         self.timeout = timeout
         self.stream = stream
@@ -375,21 +385,21 @@ class SpiderDownloader(object):
         self.proxies = proxies
         self.cert = cert
         self.wait = wait
+        self.retry = retry
+        self.not_retry_code = not_retry_code or [200]
 
     @property
     def prepare_request(self):
-        return self._prepare_request_queue.get() if not self._prepare_request_queue.empty() else None
+        return self._prepare_request_queue.pop() if not self._prepare_request_queue.empty() else None
 
     @prepare_request.setter
     def prepare_request(self, req):
-        self._prepare_request_queue.put(req)
+        self._prepare_request_queue.push(req, 0)
 
     @property
     def resp(self):
         if self._resp_queue.empty(): self.request()
-
-        self.response = self._resp_queue.get()
-        return self.response
+        return self._resp_queue.get() if not self._resp_queue.empty() else None
 
     @resp.setter
     def resp(self, resp):
@@ -424,6 +434,11 @@ class SpiderDownloader(object):
             resp = self.session.send(prepared_request, **kwargs)
             self._resp_queue.put(resp)
             self.download_count += 1
+
+            if self.retry > prepared_request.priority and resp.status_code not in self.not_retry_code:
+                prepared_request.priority = prepared_request.priority + 1
+                self._prepare_request_queue.push(prepared_request, prepared_request.priority)
+
             return resp
         else:
             print('No prepared request error ... spider prepare request queue is empty!')
@@ -431,29 +446,30 @@ class SpiderDownloader(object):
 
 class Spider(SpiderUpdater, SpiderDownloader, SpiderExtractor):
     def __init__(self, url=None, body=None, header=None, cookie=None, overwrite=True, timeout=10, stream=False,
-                 verify=None, allow_redirects=True, proxies=None, wait=None, cert=None):
+                 verify=None, allow_redirects=True, proxies=None, wait=None, cert=None, retry=0, not_retry_code=None):
 
         super(Spider, self).__init__(url=url, body=body, header=header, cookie=cookie, overwrite=overwrite)
 
         SpiderDownloader.__init__(self, timeout=timeout, stream=stream, verify=verify, allow_redirects=allow_redirects,
-                                  proxies=proxies, wait=wait, cert=cert)
+                                  proxies=proxies, wait=wait, cert=cert, retry=retry, not_retry_code=not_retry_code)
 
         if url:
             prepare_request = Request(url=self.url, data=self.body, headers=self.headers, cookies=self.cookies,
                                       method=self.method).prepare()
-            self._prepare_request_queue.put(prepare_request)
+            prepare_request.priority = 0
+            self._prepare_request_queue.push(prepare_request, prepare_request.priority)
 
     def update(self, *args, tag=None, prepare=False):
         prepared_request = SpiderUpdater.update(self, *args, tag=tag, prepare=prepare)
-        if prepare: self._prepare_request_queue.put(prepared_request)
+        if prepare: self._prepare_request_queue.push(prepared_request, 0)
 
     def update_from_list(self, *args, tag=None, prepare=False):
         prepared_request = SpiderUpdater.update_from_list(self, *args, tag=tag, prepare=prepare)
-        if prepare: self._prepare_request_queue.put(prepared_request)
+        if prepare: self._prepare_request_queue.push(prepared_request, 0)
 
     def update_from_dict(self, *args, tag=None, prepare=False):
         prepared_request = SpiderUpdater.update_from_dict(self, *args, tag=tag, prepare=prepare)
-        if prepare: self._prepare_request_queue.put(prepared_request)
+        if prepare: self._prepare_request_queue.push(prepared_request, 0)
 
     def find(self, *rules, data=None, match_mode=None, re_method='search', group_index=None):
         if not data: data = self.resp_data
