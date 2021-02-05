@@ -1,7 +1,8 @@
 import json
 import logging
 import time
-
+import sqlite3
+import pymysql
 import urllib3
 from parsel import Selector as slctor
 import requests
@@ -370,6 +371,144 @@ class SpiderExtractor(object):
         return result
 
 
+class SpiderSaver(object):
+    def __init__(self, path=None, host=None, port=None, user=None, password=None, database=None, charset=None,
+                 **kwargs):
+        assert path or host, 'Init Error ... path and host are None'
+        self._save_path = path or ''
+        self._file = None
+        self.connect = None
+        self.cursor = None
+
+        self._host = host
+        self._user = user
+        self._password = password
+        self._database = database
+        self._port = port
+        self._charset = charset or 'utf8mb4'
+
+        self.mode = kwargs.get('mode') or 'a+'
+        self._save_method = None
+        self.csv_title = None
+
+        self.insert_failed_list = []
+
+        if path.split('.')[-1] == 'csv':
+            self._init_file(**kwargs)
+        else:
+            self.table_name = kwargs.pop('insert_into')
+            self._init_connect(**kwargs)
+
+    @property
+    def save_path(self):
+        return self._save_path
+
+    @save_path.setter
+    def save_path(self, path, **kwargs):
+        self._save_path = path
+        if self._save_method == 'csv':
+            self._init_file(**kwargs)
+        else:
+            self._init_connect(**kwargs)
+
+    @property
+    def file(self):
+        return self._file
+
+    @property
+    def host(self):
+        return self._host
+
+    @property
+    def user(self):
+        return self._user
+
+    @property
+    def password(self):
+        return self._password
+
+    @property
+    def database(self):
+        return self._database
+
+    @property
+    def port(self):
+        return self._port
+
+    @property
+    def charset(self):
+        return self._charset
+
+    def _init_file(self, **kwargs):
+        self._file = open(self._save_path, self.mode, **kwargs) if self._save_path else None
+        self._save_method = 'csv'
+
+    def _init_connect(self, **kwargs):
+        if not self._host:
+            assert self._save_path.split('.')[-1] == 'db', f'Path Error ... {self._save_path}, path must end with .db'
+            self.connect = sqlite3.connect(self._save_path, check_same_thread=False, **kwargs)
+            self._save_method = 'sqlite'
+        else:
+            self.connect = pymysql.connect(host=self._host, port=self._port, user=self._user, password=self._password,
+                                           database=self._database, charset=self._charset, **kwargs)
+            self._save_method = 'mysql'
+
+        self.cursor = self.connect.cursor() if self.connect else None
+
+    def write(self, data):
+        if self._save_method == 'csv': self._write_to_csv(data)
+        if self._save_method == 'sqlite': self._write_to_sqlite(data)
+        if self._save_method == 'mysql': self._write_to_mysql(data)
+
+    def _write_to_csv(self, data):
+        if not self.csv_title:
+            if isinstance(data, dict): self.csv_title = list(data.keys())
+            if isinstance(data, list): self.csv_title = list(range(len(data)))
+            if self.csv_title: self._file.write(','.join(self.csv_title) + '\n')
+
+        if isinstance(data, dict): self._file.write(','.join([str(_) for _ in data.values()]) + '\n')
+        if isinstance(data, list): self._file.write(','.join([str(_) for _ in data]) + '\n')
+        if isinstance(data, str): self._file.write(data + '\n')
+
+    def _write_to_sqlite(self, data):
+        assert self.table_name, 'Write To Sqlite Error ... missing table name'
+
+        if isinstance(data, dict):
+            values = '(' + ','.join(['? '] * len(data.values())) + ')'
+            data = [str(_) for _ in data.values()]
+        else:
+            values = '(' + ','.join(['? '] * len(data)) + ')'
+
+        try:
+            self.cursor.execute(f'INSERT INTO {self.table_name} VALUES {values}', data)
+        except sqlite3.IntegrityError:
+            self.insert_failed_list.append(data)
+        else:
+            self.connect.commit()
+
+    def _write_to_mysql(self, data):
+        assert self.table_name, 'Write To Sqlite Error ... missing table name'
+
+        if isinstance(data, dict):
+            keys = (str(key) for key in data.keys())
+            values = (str(value) for value in data.values())
+            field_str = str(keys).replace("'", "")
+
+            sql = f"insert into `{self.table_name}` {field_str} values {values};"
+            try:
+                self.cursor.execute(sql)
+            except:
+                self.insert_failed_list.append(data)
+            else:
+                self.connect.commit()
+        else:
+            raise Exception(f'Data Type Error ... data must be dict, get {type(data)}')
+
+    def create_table(self, string):
+        self.cursor.execute(string)
+        self.connect.commit()
+
+
 class SpiderDownloader(object):
     def __init__(self, timeout=10, stream=False, verify=None, allow_redirects=True, proxies=None, wait=None, cert=None,
                  max_retry=0, not_retry_code=None):
@@ -410,12 +549,12 @@ class SpiderDownloader(object):
     @property
     def resp_data(self):
         resp = self.resp
-        if resp.text:
+        if resp and resp.text:
             if '<html' not in resp.text and '</html>' not in resp.text: return json.loads(resp.text)
         else:
             print(f'response body is empty!\n{resp}')
 
-        return resp.text
+        return resp.text if resp else ''
 
     @property
     def count(self):
@@ -453,7 +592,7 @@ class SpiderDownloader(object):
             print('No prepared request error ... spider prepare request queue is empty!')
 
 
-class Spider(SpiderUpdater, SpiderDownloader, SpiderExtractor):
+class Spider(SpiderUpdater, SpiderDownloader, SpiderExtractor, SpiderSaver):
     def __init__(self, url=None, body=None, header=None, cookie=None, overwrite=True, timeout=10, stream=False,
                  verify=None, allow_redirects=True, proxies=None, wait=None, cert=None, max_retry=0,
                  not_retry_code=None):
@@ -485,8 +624,9 @@ class Spider(SpiderUpdater, SpiderDownloader, SpiderExtractor):
     def find(self, *rules, data=None, match_mode=None, re_method='search', group_index=None):
         if not data: data = self.resp_data
 
-        return SpiderExtractor.find(self, *rules, data=data, match_mode=match_mode, re_method=re_method,
-                                    group_index=group_index)
+        result = SpiderExtractor.find(self, *rules, data=data, match_mode=match_mode, re_method=re_method,
+                                      group_index=group_index)
+        return result
 
     def css(self, *rules, data=None, extract=True, first=True, replace_rule=None, extract_key=False):
         if not data: data = self.resp_data
@@ -500,3 +640,9 @@ class Spider(SpiderUpdater, SpiderDownloader, SpiderExtractor):
         result = SpiderExtractor.extractor(self, *rules, data=data, extract_method='xpath', replace_rule=replace_rule,
                                            extract_key=extract_key)
         return result
+
+    def init_saver(self, path=None, host=None, port=None, user=None, password=None, database=None, charset=None,
+                   **kwargs):
+        if not host and not path: path = './scraped.csv'
+        SpiderSaver.__init__(self, path=path, host=host, port=port, user=user, password=password, database=database,
+                             charset=charset, **kwargs)
