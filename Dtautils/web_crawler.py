@@ -11,6 +11,7 @@ from requests.cookies import cookiejar_from_dict, create_cookie
 from Dtautils.data_factory import Printer, DataGroup, DataIter
 from Dtautils.tools import PriorityQueue
 from queue import Queue
+from concurrent.futures import ThreadPoolExecutor
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -150,15 +151,24 @@ class SpiderUpdater(object):
         if hasattr(resp, 'cookies'):
             self._spider['cookie'].update(resp.cookies)
 
-    def update(self, *args, tag=None, prepare=False):
+    def update(self, *args, tag=None, prepare=False, self_increasing=False):
         assert False not in [isinstance(_, str) for _ in args], f'args must be str, get {args}'
-        key, value = args
-        self._update(key, value, tag=tag)
-        if prepare:
-            prepared_request = Request(url=self.url, data=self.body, headers=self.headers, cookies=self.cookies,
-                                       method=self.method).prepare()
-            prepared_request.priority = 0
-            return prepared_request
+        if self_increasing:
+            key = args[0]
+            tag = tag if tag else self._auto_set_tag(key)
+            index = self._spider[tag][key]
+            if isinstance(index, str):
+                assert index.isdigit(), f'value of spider[{tag}][{key}] is {index}, not a digit'
+                index = int(index) + 1
+                self._spider[tag][key] = str(index)
+            elif isinstance(index, int):
+                index += 1
+                self._spider[tag][key] = index
+        else:
+            key, value = args
+            self._update(key, value, tag=tag)
+
+        if prepare: return self._preparing_request()
 
     def update_from_list(self, *args, tag=None, prepare=False):
         assert len(args) == 2 and False not in [isinstance(_, list) for _ in args], f'args must be list, get {args}'
@@ -166,11 +176,7 @@ class SpiderUpdater(object):
         for key, value in zip(args):
             self._update(key, value, tag=tag)
 
-        if prepare:
-            prepared_request = Request(url=self.url, data=self.body, headers=self.headers, cookies=self.cookies,
-                                       method=self.method).prepare()
-            prepared_request.priority = 0
-            return prepared_request
+        if prepare: return self._preparing_request()
 
     def update_from_dict(self, *args, tag=None, prepare=False):
         if len(args) == 1:
@@ -188,11 +194,14 @@ class SpiderUpdater(object):
         else:
             raise Exception(f'Update Error ... unsupported update args {args}')
 
-        if prepare:
-            prepared_request = Request(url=self.url, data=self.body, headers=self.headers, cookies=self.cookies,
-                                       method=self.method).prepare()
-            prepared_request.priority = 0
-            return prepared_request
+        if prepare: return self._preparing_request()
+
+    def _preparing_request(self):
+        prepared_request = Request(url=self.url, data=self.body, headers=self.headers, cookies=self.cookies,
+                                   method=self.method).prepare()
+        prepared_request.priority = 0
+
+        return prepared_request
 
     def _update(self, key, value, tag=None):
         if not tag: tag = self._auto_set_tag(key)
@@ -330,7 +339,6 @@ class SpiderExtractor(object):
 
         if len(rules) == 1 and isinstance(rules[0], str):
             result = self._get_result(tree, rules[0], method=extract_method)
-            ...
 
         elif len(rules) == 1 and isinstance(rules[0], dict):
             for key, rule in rules[0].items():
@@ -609,8 +617,8 @@ class Spider(SpiderUpdater, SpiderDownloader, SpiderExtractor, SpiderSaver):
             prepare_request.priority = 0
             self.prepare_request_queue.push(prepare_request, prepare_request.priority)
 
-    def update(self, *args, tag=None, prepare=False):
-        prepared_request = SpiderUpdater.update(self, *args, tag=tag, prepare=prepare)
+    def update(self, *args, tag=None, prepare=False, self_increasing=False):
+        prepared_request = SpiderUpdater.update(self, *args, tag=tag, prepare=prepare, self_increasing=self_increasing)
         if prepare: self.prepare_request_queue.push(prepared_request, 0)
 
     def update_from_list(self, *args, tag=None, prepare=False):
