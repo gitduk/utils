@@ -11,7 +11,6 @@ from requests.cookies import cookiejar_from_dict, create_cookie
 from Dtautils.data_factory import Printer, DataGroup, DataIter
 from Dtautils.tools import PriorityQueue
 from queue import Queue
-from concurrent.futures import ThreadPoolExecutor
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -41,6 +40,7 @@ class SpiderUpdater(object):
 
         self.overwrite = overwrite
         self.referer = None
+        self.complete = False
 
     @property
     def url(self):
@@ -91,7 +91,7 @@ class SpiderUpdater(object):
 
         body = self._spider.get('body')
         if self.post_type == 'form':
-            return '&'.join([f'{key}={value}' for key, value in body.items()])
+            return '&'.join(f'{key}={value}' for key, value in body.items())
         else:
             return json.dumps(body)
 
@@ -151,9 +151,9 @@ class SpiderUpdater(object):
         if hasattr(resp, 'cookies'):
             self._spider['cookie'].update(resp.cookies)
 
-    def update(self, *args, tag=None, prepare=False, self_increasing=False):
-        assert False not in [isinstance(_, str) for _ in args], f'args must be str, get {args}'
-        if self_increasing:
+    def update(self, *args, tag=None, prepare=False, pages=None):
+        assert False not in (isinstance(_, str) for _ in args), f'args must be str, get {args}'
+        if pages:
             key = args[0]
             tag = tag if tag else self._auto_set_tag(key)
             index = self._spider[tag][key]
@@ -164,6 +164,9 @@ class SpiderUpdater(object):
             elif isinstance(index, int):
                 index += 1
                 self._spider[tag][key] = index
+
+            if index - 1 == pages: self.complete = True
+
         else:
             key, value = args
             self._update(key, value, tag=tag)
@@ -171,7 +174,7 @@ class SpiderUpdater(object):
         if prepare: return self._preparing_request()
 
     def update_from_list(self, *args, tag=None, prepare=False):
-        assert len(args) == 2 and False not in [isinstance(_, list) for _ in args], f'args must be list, get {args}'
+        assert len(args) == 2 and False not in (isinstance(_, list) for _ in args), f'args must be list, get {args}'
 
         for key, value in zip(args):
             self._update(key, value, tag=tag)
@@ -186,7 +189,7 @@ class SpiderUpdater(object):
                 self._update(key, value, tag=tag)
 
         elif len(args) == 2:
-            assert False not in [isinstance(_, dict) for _ in args], f'args must be dict, get {args}'
+            assert False not in (isinstance(_, dict) for _ in args), f'args must be dict, get {args}'
 
             for key, value in args[0].items():
                 value = args[1].get(value)
@@ -208,12 +211,12 @@ class SpiderUpdater(object):
 
         self.referer = self.url
 
-        assert tag in ['path', 'param', 'body', 'header', 'cookie'], f'Update failed ... no tag {key}:{value}'
+        assert tag in ('path', 'param', 'body', 'header', 'cookie'), f'Update failed ... no tag {key}:{value}'
 
         if tag != 'cookie':
             self._spider[tag][key] = value
         else:
-            if key in [_.name for _ in self._spider.get('cookie')] and self.overwrite:
+            if key in (_.name for _ in self._spider.get('cookie')) and self.overwrite:
                 current_cookie = [_ for _ in self._spider.get('cookie') if _.name == key][0]
                 new_cookie = create_cookie(key, value, domain=current_cookie.domain, path=current_cookie.path)
                 self._spider[tag].set_cookie(new_cookie)
@@ -248,7 +251,7 @@ class SpiderUpdater(object):
 
             result['protocol'] = protocol
             result['domain'] = domain
-            result = {**result, **dict(zip(path_list, path_list))}
+            result = {**result, **{_: _ for _ in path_list}}
 
         if tag == 'param':
             if self.method == 'POST': return result
@@ -256,41 +259,25 @@ class SpiderUpdater(object):
             if '?' in string:
                 if '=' in string:
                     string = string.split('?')[-1]
-                    result = dict(
-                        [_.split('=', 1) for _ in string.split('&') if '=' in _ and not _.endswith('=')])
-                    result = {**result, **dict([(_.strip('='), '') for _ in string.split('&')
-                                                if _.endswith('=') or '=' not in _])}
+                    result = {_.split('=', 1)[0]: _.split('=', 1)[1] for _ in string.split('&') if '=' in _}
                 else:
-                    result = dict([(string, string) for _ in string.split('&')])
+                    result = {string.split('?')[-1]: '' for _ in string.split('&')}
 
-            elif '=' in string:
-                result = dict([_.split('=', 1) for _ in string.split('&')])
             else:
                 result = {}
 
         if tag == 'body':
-            if '=' in string and '&' in string:
-                result = dict([_.split('=', 1) for _ in string.split('&')])
-            elif '=' in string:
-                result = dict([string.split('=')])
+            if '=' in string:
+                result = {_.split('=', 1)[0]: _.split('=', 1)[1] for _ in string.split('&')}
             elif ':' in string:
+                if '\'' in string: string = string.replace('\'', '"')
                 result = json.loads(string)
 
         if tag == 'header' or tag == 'cookie':
             split_params = ['\n', ':'] if tag == 'header' else [';', '=']
             for field in string.split(split_params[0]):
-                keys = result.keys()
-
                 key, value = field.split(split_params[1], 1)
-                key, value = [key.strip(), value.strip()]
-
-                value_in_dict = result.get(key)
-                if key in keys and isinstance(value_in_dict, str):
-                    result[key] = [value_in_dict, value]
-                elif isinstance(value_in_dict, list):
-                    result[key].append(value)
-                else:
-                    result[key] = value
+                result[key.strip()] = value.strip()
 
         return result
 
@@ -320,7 +307,7 @@ class SpiderUpdater(object):
         return '\n'.join(lines)
 
     def __repr__(self):
-        return self.preview()
+        return f'{type(self).__name__}({self.method}, url=\'{self.url}\', body=\'{self.body}\', headers={self.headers}, cookies={self.cookies})'
 
 
 class SpiderExtractor(object):
@@ -332,7 +319,7 @@ class SpiderExtractor(object):
     def extractor(self, *rules, data=None, extract=True, first=False, replace_rule=None, extract_key=False,
                   extract_method=None):
 
-        assert extract_method in ['css', 'xpath'], f'Unsupported extract method: {extract_method}'
+        assert extract_method in ('css', 'xpath'), f'Unsupported extract method: {extract_method}'
         tree = slctor(data)
 
         result = {}
@@ -534,8 +521,9 @@ class SpiderDownloader(object):
         self.cert = cert
         self.wait = wait
         self.max_retry = max_retry
-        self.not_retry_code = not_retry_code or [200]
+        self.retry_code = not_retry_code or [404]
         self.start_time = time.time()
+        self.running_time = None
 
     @property
     def prepare_request(self):
@@ -571,7 +559,7 @@ class SpiderDownloader(object):
 
     @property
     def speed(self):
-        return '{:.3f}'.format(self.download_count / (time.time() - self.start_time))
+        return round(self.download_count / self.running_time, 3)
 
     def request(self, **kwargs):
         if self.wait: time.sleep(self.wait)
@@ -586,14 +574,17 @@ class SpiderDownloader(object):
             resp = self.session.send(prepared_request, **kwargs)
             self.resp_queue.put(resp)
             self.download_count += 1
+            self.running_time = round(time.time() - self.start_time, 3)
 
-            if self.max_retry > prepared_request.priority and resp.status_code not in self.not_retry_code:
-                prepared_request.priority = prepared_request.priority + 1
-                if prepared_request.priority == self.max_retry: self.failed_requests.append(prepared_request)
-                self.prepare_request_queue.push(prepared_request, prepared_request.priority)
-
-            elif self.max_retry == 0 and resp.status_code not in self.not_retry_code:
-                self.failed_requests.append(prepared_request)
+            if resp.status_code in self.retry_code:
+                if self.max_retry and prepared_request.priority <= self.max_retry:
+                    prepared_request.priority = prepared_request.priority + 1
+                    if prepared_request.priority == self.max_retry + 1:
+                        self.failed_requests.append(prepared_request)
+                    else:
+                        self.prepare_request_queue.push(prepared_request, prepared_request.priority)
+                else:
+                    self.failed_requests.append(prepared_request)
 
             return resp
         else:
@@ -607,18 +598,21 @@ class Spider(SpiderUpdater, SpiderDownloader, SpiderExtractor, SpiderSaver):
 
         super(Spider, self).__init__(url=url, body=body, header=header, cookie=cookie, overwrite=overwrite)
 
-        SpiderDownloader.__init__(self, timeout=timeout, stream=stream, verify=verify, allow_redirects=allow_redirects,
-                                  proxies=proxies, wait=wait, cert=cert, max_retry=max_retry,
-                                  not_retry_code=not_retry_code)
-
         if url:
+            SpiderDownloader.__init__(self, timeout=timeout, stream=stream, verify=verify,
+                                      allow_redirects=allow_redirects, proxies=proxies, wait=wait, cert=cert,
+                                      max_retry=max_retry, not_retry_code=not_retry_code)
+
             prepare_request = Request(url=self.url, data=self.body, headers=self.headers, cookies=self.cookies,
                                       method=self.method).prepare()
             prepare_request.priority = 0
             self.prepare_request_queue.push(prepare_request, prepare_request.priority)
+            self.pages = 0
 
-    def update(self, *args, tag=None, prepare=False, self_increasing=False):
-        prepared_request = SpiderUpdater.update(self, *args, tag=tag, prepare=prepare, self_increasing=self_increasing)
+    def update(self, *args, tag=None, prepare=False, pages=None):
+        if not self.pages: self.pages = self._get_pages(pages)
+
+        prepared_request = SpiderUpdater.update(self, *args, tag=tag, prepare=prepare, pages=self.pages)
         if prepare: self.prepare_request_queue.push(prepared_request, 0)
 
     def update_from_list(self, *args, tag=None, prepare=False):
@@ -654,3 +648,26 @@ class Spider(SpiderUpdater, SpiderDownloader, SpiderExtractor, SpiderSaver):
         if not host and not path: path = './scraped.csv'
         SpiderSaver.__init__(self, path=path, host=host, port=port, user=user, password=password, database=database,
                              charset=charset, **kwargs)
+
+    def _get_pages(self, pages):
+        if isinstance(pages, int):
+            return pages
+        else:
+            resp = self.resp
+            if resp and resp.text:
+                if '<html' not in resp.text and '</html>' not in resp.text:
+                    data = json.loads(resp.text)
+                    pages = int(self.find(pages, data=data))
+                else:
+                    data = resp.text
+                    if '(.*?)' or '*?' in pages:
+                        pages = self.find(pages, data=data, group_index=1)
+                    elif '::text' in pages:
+                        pages = self.css(pages, data=data)
+                    elif 'text()' in pages:
+                        pages = self.xpath(pages, data=data)
+
+                assert pages.isdigit(), f'Get Pages Error ... invalid pages value: {pages}'
+                return pages
+            else:
+                raise Exception('Get Pages Failed ... response is null')
