@@ -610,9 +610,7 @@ class Spider(SpiderUpdater, SpiderDownloader, SpiderExtractor, SpiderSaver):
             self.pages = 0
 
     def update(self, *args, tag=None, prepare=False, pages=None):
-        if not self.pages: self.pages = self._get_pages(pages)
-
-        prepared_request = SpiderUpdater.update(self, *args, tag=tag, prepare=prepare, pages=self.pages)
+        prepared_request = SpiderUpdater.update(self, *args, tag=tag, prepare=prepare, pages=pages)
         if prepare: self.prepare_request_queue.push(prepared_request, 0)
 
     def update_from_list(self, *args, tag=None, prepare=False):
@@ -648,26 +646,3 @@ class Spider(SpiderUpdater, SpiderDownloader, SpiderExtractor, SpiderSaver):
         if not host and not path: path = './scraped.csv'
         SpiderSaver.__init__(self, path=path, host=host, port=port, user=user, password=password, database=database,
                              charset=charset, **kwargs)
-
-    def _get_pages(self, pages):
-        if isinstance(pages, int):
-            return pages
-        else:
-            resp = self.resp
-            if resp and resp.text:
-                if '<html' not in resp.text and '</html>' not in resp.text:
-                    data = json.loads(resp.text)
-                    pages = int(self.find(pages, data=data))
-                else:
-                    data = resp.text
-                    if '(.*?)' or '*?' in pages:
-                        pages = self.find(pages, data=data, group_index=1)
-                    elif '::text' in pages:
-                        pages = self.css(pages, data=data)
-                    elif 'text()' in pages:
-                        pages = self.xpath(pages, data=data)
-
-                assert pages.isdigit(), f'Get Pages Error ... invalid pages value: {pages}'
-                return pages
-            else:
-                raise Exception('Get Pages Failed ... response is null')
