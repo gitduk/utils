@@ -20,15 +20,80 @@ def search(key, data=None, target_type=None):
 
 
 def strip(*args, data=None, strip_key=False):
-    for rule in args:
-        assert isinstance(rule, (str, list, tuple)), f'args must be str、list or tuple, get {rule}'
-        if isinstance(rule, str): rule = [rule]
+    if not data: args, data = args[:-1], args[-1]
 
-        for r in rule:
+    for st_key in args:
+        assert isinstance(st_key, (str, list, tuple)), f'args must be str、list or tuple, get {st_key}'
+        if isinstance(st_key, str): st_key = [st_key]
+
+        for r in st_key:
             result = {}
             for key, value in data.items():
                 key, value = _strip(key, value, r, strip_key=strip_key)
                 result[key] = value
+            data = result
+
+    return data
+
+
+def replace(replace_map=None, data=None, replace_key=False):
+    assert isinstance(data, dict), 'item must be dict'
+
+    for r_key, r_value in replace_map.items():
+        result = {}
+        for key, value in data.items():
+            key = key if not replace_key else key.replace(r_key, r_value)
+            if isinstance(value, str):
+                result[key] = value.replace(r_key, r_value)
+            elif isinstance(value, dict):
+                result[key] = replace(data=value, replace_key=replace_key, replace_map={r_key: r_value})
+            elif isinstance(value, list):
+                result[key] = _process_list(key, value, rule=(r_key, r_value), process_key=replace_key)
+            else:
+                result[key] = value
+        data = result
+
+    return data
+
+
+def update(update_map, data=None, target_type=None):
+    assert isinstance(data, dict), 'item must be dict'
+    if not target_type: target_type = (str, bytes, int, float, list, dict)
+
+    for u_key, u_value in update_map.items():
+        result = {}
+        for key, value in data.items():
+            if isinstance(value, target_type):
+                result[key] = u_value if key == u_key else value
+            elif isinstance(value, dict):
+                result[key] = update(update_map={u_key: u_value}, data=value)
+            else:
+                result[key] = value
+        data = result
+
+    return data
+
+
+def delete(*args, data=None, target_type=None):
+    if not data: args, data = args[:-1], args[-1]
+    if not target_type: target_type = (str, bytes, int, float, list, dict)
+
+    for d_key in args:
+        assert isinstance(d_key, (str, list, tuple)), f'args must be str、list or tuple, get {d_key}'
+
+        if isinstance(d_key, str): d_key = [d_key]
+        for d_k in d_key:
+            result = {}
+            for key, value in data.items():
+                if isinstance(value, target_type):
+                    if key == d_k:
+                        continue
+                    else:
+                        result[key] = value
+                elif isinstance(value, dict):
+                    result[key] = delete(d_k, data=value, target_type=target_type)
+                else:
+                    result[key] = value
             data = result
 
     return data
@@ -74,26 +139,6 @@ def _process_list(key, value, rule, process_key=False):
     return result
 
 
-def replace(replace_map=None, data=None, replace_key=False):
-    assert isinstance(data, dict), 'item must be dict'
-
-    for r_key, r_value in replace_map.items():
-        result = {}
-        for key, value in data.items():
-            key = key if not replace_key else key.replace(r_key, r_value)
-            if isinstance(value, str):
-                result[key] = value.replace(r_key, r_value)
-            elif isinstance(value, dict):
-                result[key] = replace(data=value, replace_key=replace_key, replace_map={r_key: r_value})
-            elif isinstance(value, list):
-                result[key] = _process_list(key, value, rule=(r_key, r_value), process_key=replace_key)
-            else:
-                result[key] = value
-        data = result
-
-    return data
-
-
 def flatten(data, ign=(str, bytes)):
     for k, v in data.items():
         if isinstance(v, dict) and not isinstance(v, ign):
@@ -102,28 +147,18 @@ def flatten(data, ign=(str, bytes)):
             yield k, v
 
 
-def update(update_map, data=None, update_type=(str, int)):
-    assert isinstance(data, dict), 'item must be dict'
+def re_search(re_map, data, flags=None, index=None):
+    assert isinstance(re_map, dict), 'map must be a dict'
+    result = {key: re.search(pattern, data, flags=flags or 0) if isinstance(pattern, str) else pattern.search(data)
+              for key, pattern in re_map.items()}
 
-    for u_key, u_value in update_map.items():
-        result = {}
-        for key, value in data.items():
-            if isinstance(value, update_type):
-                result[key] = u_value if key == u_key else value
-            elif isinstance(value, dict):
-                result[key] = update(update_map={u_key: u_value}, data=value)
-            else:
-                result[key] = value
-        data = result
-
-    return data
+    return {key: value.group(index or 0) for key, value in result.items()}
 
 
-# TODO ...
-class Re(object):
-    def __init__(self, data, match_mode=None):
-        self.data = data
-        self.match_mode = match_mode or 0
+def re_findall(re_map, data, flags=None):
+    assert isinstance(re_map, dict), 'map must be a dict'
+    return {key: re.findall(pattern, data, flags=flags or 0) if isinstance(pattern, str) else pattern.findall(data)
+            for key, pattern in re_map.items()}
 
 
 class DictFactory(object):
@@ -140,5 +175,8 @@ class DictFactory(object):
     def replace(self, replace_map=None, data=None, replace_key=False):
         return replace(replace_map=replace_map, data=data or self.data, replace_key=replace_key)
 
-    def update(self, update_map=None, data=None):
-        return update(update_map, data=data or self.data, update_type=(str, int))
+    def update(self, update_map=None, data=None, target_type=None):
+        return update(update_map, data=data or self.data, target_type=target_type)
+
+    def delete(self, *args, data=None, target_type=None):
+        return delete(*args, data=data, target_type=target_type)

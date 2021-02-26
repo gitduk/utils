@@ -10,7 +10,7 @@ from requests import Request, Session
 from requests.cookies import cookiejar_from_dict, create_cookie
 from Dtautils.tools import PriorityQueue
 from queue import Queue
-from Dtautils.data_factory import replace, search
+from Dtautils.data_factory import replace, search, re_search, re_findall
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -281,7 +281,7 @@ class SpiderExtractor(object):
     def find(self, key, data=None, target_type=None):
         return search(key=key, data=data, target_type=target_type)
 
-    def extractor(self, *rules, data=None, extract=True, first=False, replace_rule=None, extract_key=False,
+    def extractor(self, *rules, data=None, extract=True, first=False, replace_map=None, extract_key=False,
                   extract_method=None):
 
         assert extract_method in ('css', 'xpath'), f'Unsupported extract method: {extract_method}'
@@ -307,8 +307,8 @@ class SpiderExtractor(object):
         elif extract:
             result = self._extract_selector(result, first=first)
 
-        if replace_rule:
-            result = replace(replace_map=replace_rule, data=result)
+        if replace_map:
+            result = replace(replace_map=replace_map, data=result)
 
         return result
 
@@ -592,14 +592,20 @@ class Spider(SpiderUpdater, SpiderDownloader, SpiderExtractor, SpiderSaver):
     def find(self, key, data=None, target_type=None):
         return SpiderExtractor.find(self, key, data=data or self.resp_data, target_type=None)
 
+    def re_search(self, re_map, data=None, index=None):
+        return re_search(re_map=re_map, data=data or self.resp_data, index=index)
+
+    def re_findall(self, re_map, data=None, index=None):
+        return re_findall(re_map=re_map, data=data or self.resp_data)
+
     def css(self, *rules, data=None, extract=True, first=True, replace_rule=None, extract_key=False):
         return SpiderExtractor.extractor(self, *rules, data=data or self.resp_data, extract_method='css',
-                                         extract=extract, first=first, replace_rule=replace_rule,
+                                         extract=extract, first=first, replace_map=replace_rule,
                                          extract_key=extract_key)
 
     def xpath(self, *rules, data=None, replace_rule=None, extract_key=False):
         return SpiderExtractor.extractor(self, *rules, data=data or self.resp_data, extract_method='xpath',
-                                         replace_rule=replace_rule, extract_key=extract_key)
+                                         replace_map=replace_rule, extract_key=extract_key)
 
     def init_saver(self, path=None, host=None, port=None, user=None, password=None, database=None, charset=None,
                    **kwargs):
