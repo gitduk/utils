@@ -32,3 +32,13 @@ def fn_timer(func):
         return result
 
     return wrapper
+
+
+def _flatten(item, ign=(str, bytes)):
+    for k, v in item.items():
+        if isinstance(v, dict) and not isinstance(v, ign):
+            yield from _flatten(v)
+        yield k, v
+
+
+

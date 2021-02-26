@@ -8,9 +8,9 @@ from parsel import Selector as slctor
 import requests
 from requests import Request, Session
 from requests.cookies import cookiejar_from_dict, create_cookie
-from Dtautils.data_factory import Printer, DataGroup, DataIter
 from Dtautils.tools import PriorityQueue
 from queue import Queue
+from Dtautils.data_factory import replace, search
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -273,40 +273,13 @@ class SpiderUpdater(object):
 
         return result
 
-    def preview(self, data=None, name=None):
-        if not data:
-            name = 'Spider'
-            data = {
-                'url': self.url,
-                'param': self.param,
-                'body': self.body,
-                'headers': self.headers,
-                'cookies': self.cookies
-            }
-        else:
-            name = name or type(data).__name__
-            if not isinstance(data, dict): return data
-
-        d_group = DataGroup(name)
-        for key, value in data.items():
-            if isinstance(value, str):
-                d_group.add_info(key, value)
-            else:
-                d_group.add_data(key, value)
-
-        printer = Printer()
-        lines = printer.parse_data_group(d_group)
-        return '\n'.join(lines)
-
     def __repr__(self):
         return f'{type(self).__name__}({self.method}, url=\'{self.url}\', body=\'{self.body}\', headers={self.headers}, cookies={self.cookies})'
 
 
 class SpiderExtractor(object):
-    def find(self, *rules, data=None, match_mode=None, re_method='search', group_index=None):
-        dataiter = DataIter(*rules, data=data, mode='search', match_mode=match_mode, re_method=re_method,
-                            group_index=group_index)
-        return dataiter.result
+    def find(self, key, data=None, target_type=None):
+        return search(key=key, data=data, target_type=target_type)
 
     def extractor(self, *rules, data=None, extract=True, first=False, replace_rule=None, extract_key=False,
                   extract_method=None):
@@ -335,8 +308,7 @@ class SpiderExtractor(object):
             result = self._extract_selector(result, first=first)
 
         if replace_rule:
-            diter = DataIter(replace_rule, data=result)
-            result = diter.result
+            result = replace(replace_map=replace_rule, data=result)
 
         return result
 
@@ -504,6 +476,7 @@ class SpiderDownloader(object):
         self.prepared_request_queue = PriorityQueue()
         self.resp_queue = Queue()
         self.failed_requests = []
+        self.failed_resp = []
 
         self.timeout = timeout
         self.stream = stream
@@ -575,6 +548,7 @@ class SpiderDownloader(object):
                         self.retry_count += 1
                 else:
                     self.failed_requests.append(prepared_request)
+                    self.failed_resp.append(resp)
             else:
                 self.resp_queue.put(resp)
                 self.download_count += 1
@@ -615,24 +589,17 @@ class Spider(SpiderUpdater, SpiderDownloader, SpiderExtractor, SpiderSaver):
         prepared_request = SpiderUpdater.update_from_dict(self, *args, tag=tag, prepare=prepare)
         if prepared_request: self.prepared_request_queue.push(prepared_request, 0)
 
-    def find(self, *rules, data=None, match_mode=None, re_method='search', group_index=None):
-        if not data: data = self.resp_data
-
-        result = SpiderExtractor.find(self, *rules, data=data, match_mode=match_mode, re_method=re_method,
-                                      group_index=group_index)
-        return result
+    def find(self, key, data=None, target_type=None):
+        return SpiderExtractor.find(self, key, data=data or self.resp_data, target_type=None)
 
     def css(self, *rules, data=None, extract=True, first=True, replace_rule=None, extract_key=False):
-        if not data: data = self.resp_data
-        result = SpiderExtractor.extractor(self, *rules, data=data, extract_method='css', extract=extract, first=first,
-                                           replace_rule=replace_rule, extract_key=extract_key)
-        return result
+        return SpiderExtractor.extractor(self, *rules, data=data or self.resp_data, extract_method='css',
+                                         extract=extract, first=first, replace_rule=replace_rule,
+                                         extract_key=extract_key)
 
     def xpath(self, *rules, data=None, replace_rule=None, extract_key=False):
-        if not data: data = self.resp_data
-        result = SpiderExtractor.extractor(self, *rules, data=data, extract_method='xpath', replace_rule=replace_rule,
-                                           extract_key=extract_key)
-        return result
+        return SpiderExtractor.extractor(self, *rules, data=data or self.resp_data, extract_method='xpath',
+                                         replace_rule=replace_rule, extract_key=extract_key)
 
     def init_saver(self, path=None, host=None, port=None, user=None, password=None, database=None, charset=None,
                    **kwargs):
