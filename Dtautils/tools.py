@@ -1,5 +1,6 @@
 import heapq
 import time
+from collections import defaultdict
 from functools import wraps
 
 
@@ -39,6 +40,5 @@ def _flatten(item, ign=(str, bytes)):
         if isinstance(v, dict) and not isinstance(v, ign):
             yield from _flatten(v)
         yield k, v
-
 
 

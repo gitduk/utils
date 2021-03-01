@@ -161,6 +161,18 @@ def re_findall(re_map, data, flags=None):
             for key, pattern in re_map.items()}
 
 
+def merge(*args, overwrite=False):
+    default_dict = defaultdict(list)
+
+    for d in args:
+        assert isinstance(d, dict), 'arg must be a dict'
+        for k, v in d.items():
+            if overwrite and default_dict.get(k) and v in default_dict.get(k): continue
+            default_dict[k].append(v)
+
+    return dict(default_dict)
+
+
 class DictFactory(object):
     def __init__(self, data):
         assert isinstance(data, dict), 'item must be a dict'
