@@ -63,10 +63,10 @@ def update(update_map, data=None, target_type=None):
     for u_key, u_value in update_map.items():
         result = {}
         for key, value in data.items():
-            if isinstance(value, target_type):
+            if isinstance(value, target_type) and not isinstance(value, dict):
                 result[key] = u_value if key == u_key else value
             elif isinstance(value, dict):
-                result[key] = update(update_map={u_key: u_value}, data=value)
+                result[key] = update(update_map={u_key: u_value}, data=value, target_type=target_type)
             else:
                 result[key] = value
         data = result
@@ -139,10 +139,10 @@ def _process_list(key, value, rule, process_key=False):
     return result
 
 
-def flatten(data, ign=(str, bytes)):
+def flatten(data):
     for k, v in data.items():
-        if isinstance(v, dict) and not isinstance(v, ign):
-            yield from _flatten(v)
+        if isinstance(v, dict):
+            yield from flatten(v)
         else:
             yield k, v
 
@@ -159,6 +159,25 @@ def re_findall(re_map, data, flags=None):
     assert isinstance(re_map, dict), 'map must be a dict'
     return {key: re.findall(pattern, data, flags=flags or 0) if isinstance(pattern, str) else pattern.findall(data)
             for key, pattern in re_map.items()}
+
+
+def merge(*args, overwrite=False):
+    default_dict = defaultdict(list)
+
+    v_dict = defaultdict(list)
+    for d in args:
+        assert isinstance(d, dict), 'arg must be a dict'
+        for k, v in d.items():
+            if isinstance(v, dict):
+                v_dict[k].append(v)
+                continue
+            if overwrite and default_dict.get(k) and v in default_dict.get(k): continue
+            default_dict[k].append(v)
+
+    for k, v in v_dict.items():
+        default_dict[k].append(merge(*v, overwrite=overwrite))
+
+    return {k: v[0] if k in v_dict.keys() else v for k, v in dict(default_dict).items()}
 
 
 class DictFactory(object):

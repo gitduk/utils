@@ -595,7 +595,7 @@ class Spider(SpiderUpdater, SpiderDownloader, SpiderExtractor, SpiderSaver):
     def re_search(self, re_map, data=None, index=None):
         return re_search(re_map=re_map, data=data or self.resp_data, index=index)
 
-    def re_findall(self, re_map, data=None, index=None):
+    def re_findall(self, re_map, data=None):
         return re_findall(re_map=re_map, data=data or self.resp_data)
 
     def css(self, *rules, data=None, extract=True, first=True, replace_rule=None, extract_key=False):

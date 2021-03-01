@@ -1,5 +1,6 @@
 import heapq
 import time
+from collections import defaultdict
 from functools import wraps
 
 
@@ -34,11 +35,10 @@ def fn_timer(func):
     return wrapper
 
 
-def _flatten(item, ign=(str, bytes)):
+def _flatten(item):
     for k, v in item.items():
-        if isinstance(v, dict) and not isinstance(v, ign):
+        if isinstance(v, dict):
             yield from _flatten(v)
         yield k, v
-
 
 
