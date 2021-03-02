@@ -475,8 +475,7 @@ class SpiderDownloader(object):
         self.session = Session()
         self.prepared_request_queue = PriorityQueue()
         self.resp_queue = Queue()
-        self.failed_requests = []
-        self.failed_resp = []
+        self.failed_list = []
 
         self.timeout = timeout
         self.stream = stream
@@ -502,8 +501,13 @@ class SpiderDownloader(object):
 
     @property
     def resp(self):
-        if self.resp_queue.empty(): self.request()
-        return self.resp_queue.get() if not self.resp_queue.empty() else None
+        if self.resp_queue.empty():
+            response = self.request()
+        else:
+            response = self.resp_queue.get()
+
+        assert isinstance(response, requests.Response), f'response is {response}'
+        return response
 
     @resp.setter
     def resp(self, resp):
@@ -520,7 +524,7 @@ class SpiderDownloader(object):
     @property
     def count(self):
         return {'request': self.prepared_request_queue.qsize(), 'response': self.resp_queue.qsize(),
-                'downloaded': self.download_count, 'retried': self.retry_count, 'failed': len(self.failed_requests)}
+                'downloaded': self.download_count, 'retried': self.retry_count, 'failed': len(self.failed_list)}
 
     @property
     def speed(self):
@@ -542,13 +546,12 @@ class SpiderDownloader(object):
                 if self.max_retry and prepared_request.priority <= self.max_retry:
                     prepared_request.priority = prepared_request.priority + 1
                     if prepared_request.priority - 1 == self.max_retry:
-                        self.failed_requests.append(prepared_request)
+                        self.failed_list.append((prepared_request, resp))
                     else:
                         self.prepared_request_queue.push(prepared_request, prepared_request.priority)
                         self.retry_count += 1
                 else:
-                    self.failed_requests.append(prepared_request)
-                    self.failed_resp.append(resp)
+                    self.failed_list.append((prepared_request, resp))
             else:
                 self.resp_queue.put(resp)
                 self.download_count += 1
@@ -556,7 +559,7 @@ class SpiderDownloader(object):
 
             return resp
         else:
-            print('No prepared request warning ... spider prepare request queue is empty!')
+            print('No prepared request ... spider prepare request queue is empty!')
 
 
 class Spider(SpiderUpdater, SpiderDownloader, SpiderExtractor, SpiderSaver):

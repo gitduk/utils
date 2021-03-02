@@ -1,6 +1,6 @@
 import re
 from collections import defaultdict
-from collections.abc import Iterable
+from collections.abc import Iterable, Callable
 from Dtautils.tools import _flatten
 
 
@@ -23,8 +23,7 @@ def strip(*args, data=None, strip_key=False):
     if not data: args, data = args[:-1], args[-1]
 
     for st_key in args:
-        assert isinstance(st_key, (str, list, tuple)), f'args must be str、list or tuple, get {st_key}'
-        if isinstance(st_key, str): st_key = [st_key]
+        if isinstance(st_key, (str, Callable)): st_key = [st_key]
 
         for r in st_key:
             result = {}
@@ -100,6 +99,10 @@ def delete(*args, data=None, target_type=None):
 
 
 def _strip(key, value, rule, strip_key=False):
+    if type(rule).__name__ == 'function':
+        rule, switch = rule(key, value)
+        if not switch: return key, value
+
     key = key.replace(rule, '') if strip_key else key
 
     if isinstance(value, (str, int, float)):
