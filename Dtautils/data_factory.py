@@ -16,7 +16,7 @@ def search(key, data=None, target_type=None):
         }
     else:
         result = [_ for _ in my_dict.get(key) if isinstance(_, target_type)] if target_type else my_dict.get(key)
-        return result[0] if len(result) == 1 else result
+        return result[0] if result and len(result) == 1 else result
 
 
 def strip(*args, data=None, strip_key=False):
@@ -169,7 +169,7 @@ def merge(*args, overwrite=False):
 
     v_dict = defaultdict(list)
     for d in args:
-        assert isinstance(d, dict), 'arg must be a dict'
+        if not isinstance(d, dict): continue
         for k, v in d.items():
             if isinstance(v, dict):
                 v_dict[k].append(v)
