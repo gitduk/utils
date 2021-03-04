@@ -60,7 +60,7 @@ class SpiderUpdater(object):
 
         protocol = path_dict.get('protocol')
         domain = path_dict.get('domain')
-        sub_path = '/'.join([value for key, value in path_dict.items() if key not in ['protocol', 'domain']])
+        sub_path = '/'.join(path_dict.get('path'))
         return f'{protocol}://{domain}/{sub_path}'
 
     @property
@@ -206,7 +206,12 @@ class SpiderUpdater(object):
         assert tag in ('path', 'param', 'body', 'header', 'cookie'), f'Update failed ... no tag {key}:{value}'
 
         if tag != 'cookie':
-            self._spider[tag][key] = value
+            if tag == 'path' and key.isdigit():
+                self._spider[tag]['path'].pop(int(key) - 1)
+                self._spider[tag]['path'].insert(int(key) - 1, value)
+                ...
+            else:
+                self._spider[tag][key] = value
         else:
             if key in (_.name for _ in self._spider.get('cookie')) and self.overwrite:
                 current_cookie = [_ for _ in self._spider.get('cookie') if _.name == key][0]
@@ -218,6 +223,8 @@ class SpiderUpdater(object):
     def _auto_set_tag(self, key):
         tag_name_list = [tag_name for tag_name, key_list in self._spider_keys.items() if key in key_list]
         assert len(tag_name_list) <= 1, f'Please set tag for update, there are many tags: {tag_name_list}'
+
+        if key.isdigit(): tag_name_list.append('path')
 
         tag_d = {
             'GET': 'param',
@@ -243,7 +250,7 @@ class SpiderUpdater(object):
 
             result['protocol'] = protocol
             result['domain'] = domain
-            result = {**result, **{_: _ for _ in path_list}}
+            result = {**result, 'path': path_list}
 
         if tag == 'param':
             if self.method == 'POST': return result
