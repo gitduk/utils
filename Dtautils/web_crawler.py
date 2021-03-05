@@ -560,7 +560,6 @@ class SpiderDownloader(object):
                 else:
                     self.failed_list.append((prepared_request, resp))
             else:
-                self.resp_queue.put(resp)
                 self.download_count += 1
                 self.running_time = round(time.time() - self.start_time, 3)
 
