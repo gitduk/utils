@@ -159,7 +159,7 @@ class SpiderUpdater(object):
         key, value = args
         self._update(key, value, tag=tag)
 
-        if prepare: return self._preparing_request()
+        if prepare: return self.prepare_request()
 
     def update_from_list(self, *args, tag=None, prepare=True):
         assert len(args) == 2 and False not in (isinstance(_, list) for _ in args), f'Args must be list, get {args}'
@@ -167,7 +167,7 @@ class SpiderUpdater(object):
         for key, value in zip(args):
             self._update(key, value, tag=tag)
 
-        if prepare: return self._preparing_request()
+        if prepare: return self.prepare_request()
 
     def update_from_dict(self, *args, tag=None, prepare=True):
         if len(args) == 1:
@@ -185,9 +185,9 @@ class SpiderUpdater(object):
         else:
             raise Exception(f'Update Error ... unsupported update args {args}')
 
-        if prepare: return self._preparing_request()
+        if prepare: return self.prepare_request()
 
-    def _preparing_request(self):
+    def prepare_request(self):
         prepared_request = Request(url=self.url, data=self.body, headers=self.headers, cookies=self.cookies,
                                    method=self.method).prepare()
         prepared_request.priority = 0
@@ -476,7 +476,6 @@ class SpiderDownloader(object):
         self.download_count = 0
         self.session = Session()
         self.prepared_request_queue = PriorityQueue()
-        self.resp_queue = Queue()
         self.failed_list = []
 
         self.timeout = timeout
@@ -488,7 +487,7 @@ class SpiderDownloader(object):
         self.wait = wait
 
         self.max_retry = max_retry
-        self.retry_code = not_retry_code or [404]
+        self.retry_code = not_retry_code or [404, 503]
         self.retry_count = 0
         self.start_time = time.time()
         self.running_time = None
@@ -502,21 +501,8 @@ class SpiderDownloader(object):
         self.prepared_request_queue.push(req, 0)
 
     @property
-    def resp(self):
-        if self.resp_queue.empty(): self.request()
-
-        response = self.resp_queue.get()
-
-        assert isinstance(response, requests.Response), f'Get valid response: {response}'
-        return response
-
-    @resp.setter
-    def resp(self, resp):
-        self.resp_queue.put(resp)
-
-    @property
     def data(self):
-        resp = self.resp
+        resp = self.request()
         try:
             resp_data = json.loads(resp.text)
         except:
@@ -526,8 +512,8 @@ class SpiderDownloader(object):
 
     @property
     def count(self):
-        return {'Request': self.prepared_request_queue.qsize(), 'Response': self.resp_queue.qsize(),
-                'Downloaded': self.download_count, 'Retried': self.retry_count, 'Failed': len(self.failed_list)}
+        return {'Request': self.prepared_request_queue.qsize(), 'Downloaded': self.download_count,
+                'Retried': self.retry_count, 'Failed': len(self.failed_list)}
 
     @property
     def speed(self):
@@ -556,13 +542,13 @@ class SpiderDownloader(object):
 
         time.sleep(self.wait or prepared_request.priority * 0.1)
         if prepared_request:
-            kwargs = {'timeout': self.timeout,
-                      'stream': self.stream,
-                      'verify': self.verify,
-                      'allow_redirects': self.allow_redirects,
-                      'proxies': self.get_proxies(),
-                      'cert': self.cert, **kwargs}
-            resp = self.session.send(prepared_request, **kwargs)
+            kwargs_for_session = {'timeout': self.timeout,
+                                  'stream': self.stream,
+                                  'verify': self.verify,
+                                  'allow_redirects': self.allow_redirects,
+                                  'proxies': self.get_proxies(),
+                                  'cert': self.cert, **kwargs}
+            resp = self.session.send(prepared_request, **kwargs_for_session)
             if resp.status_code in self.retry_code:
                 if self.max_retry and prepared_request.priority <= self.max_retry:
                     prepared_request.priority = prepared_request.priority + 1
@@ -574,7 +560,6 @@ class SpiderDownloader(object):
                 else:
                     self.failed_list.append((prepared_request, resp))
             else:
-                self.resp_queue.put(resp)
                 self.download_count += 1
                 self.running_time = round(time.time() - self.start_time, 3)
 
@@ -647,7 +632,7 @@ class Spider(SpiderUpdater, SpiderDownloader, SpiderExtractor, SpiderSaver):
         self._spider['param'] = self._string_to_dict(url, tag='param')
 
         if self.headers.get('Host'): self.update('Host', self._spider['path'].get('domain'), tag='header')
-        if self.prepare: self.prepared_request_queue.push(self._preparing_request(), 0)
+        if self.prepare: self.prepared_request_queue.push(self.prepare_request(), 0)
 
     @property
     def body(self):
@@ -662,4 +647,4 @@ class Spider(SpiderUpdater, SpiderDownloader, SpiderExtractor, SpiderSaver):
     @body.setter
     def body(self, body):
         self._spider['body'] = self._string_to_dict(body, tag='body')
-        if self.prepare: self.prepared_request_queue.push(self._preparing_request(), 0)
+        if self.prepare: self.prepared_request_queue.push(self.prepare_request(), 0)
