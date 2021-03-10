@@ -24,13 +24,13 @@ class SpiderUpdater(object):
         'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.88 Safari/537.36'
     }
 
-    def __init__(self, url=None, body=None, header=None, cookie=None, overwrite=True, prepare=True):
+    def __init__(self, url=None, body=None, header=None, cookie=None, overwrite=True, prepare=True, post_type=None):
 
         if not header: header = self.UA
 
         self.method = 'POST' if body else 'GET'
-        self.post_type = None
-        if body: self.post_type = 'form' if '=' in body else 'payload'
+        self.post_type = post_type
+        if not post_type and body: self.post_type = 'form' if '=' in body or isinstance(body, dict) else 'payload'
 
         self._spider = {
             'path': self._string_to_dict(url, tag='path'),
@@ -548,8 +548,8 @@ class SpiderDownloader(object):
     def request(self, **kwargs):
         prepared_request = self.prepared_request
 
-        time.sleep(self.wait or prepared_request.priority * 0.1)
         if prepared_request:
+            time.sleep(self.wait or prepared_request.priority * 0.1)
             kwargs_for_session = {'timeout': self.timeout,
                                   'stream': self.stream,
                                   'verify': self.verify,
@@ -577,13 +577,13 @@ class SpiderDownloader(object):
 
 
 class Spider(SpiderUpdater, SpiderDownloader, SpiderExtractor, SpiderSaver):
-    def __init__(self, url=None, body=None, header=None, cookie=None, overwrite=True, timeout=10, stream=False,
-                 verify=None, allow_redirects=True, proxies=None, wait=None, cert=None, max_retry=0,
+    def __init__(self, url=None, body=None, header=None, cookie=None, overwrite=True, post_type=None, timeout=10,
+                 stream=False, verify=None, allow_redirects=True, proxies=None, wait=None, cert=None, max_retry=0,
                  not_retry_code=None, prepare=True):
 
         if url and url.endswith('/'): url = url[:-1]
         super(Spider, self).__init__(url=url, body=body, header=header, cookie=cookie, overwrite=overwrite,
-                                     prepare=prepare)
+                                     prepare=prepare, post_type=post_type)
 
         SpiderDownloader.__init__(self, timeout=timeout, stream=stream, verify=verify,
                                   allow_redirects=allow_redirects, proxies=proxies, wait=wait, cert=cert,
@@ -654,5 +654,6 @@ class Spider(SpiderUpdater, SpiderDownloader, SpiderExtractor, SpiderSaver):
 
     @body.setter
     def body(self, body):
+        if isinstance(body, dict): self.post_type = 'form'
         self._spider['body'] = self._string_to_dict(body, tag='body')
         if self.prepare: self.prepared_request_queue.push(self.prepare_request(), 0)
