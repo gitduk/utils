@@ -205,6 +205,14 @@ class SpiderUpdater(object):
             if tag == 'path' and key.isdigit():
                 self._spider[tag]['path'].pop(int(key) - 1)
                 self._spider[tag]['path'].insert(int(key) - 1, value)
+            elif key.startswith('-') and key.strip('-').isdigit():
+                index = 0 - int(key.strip('-'))
+                self._spider[tag]['path'].pop(index)
+                insert_index = index + 1
+                if insert_index == 0:
+                    self._spider[tag]['path'].append(value)
+                else:
+                    self._spider[tag]['path'].insert(index + 1, value)
             else:
                 self._spider[tag][key] = value
         else:
@@ -573,14 +581,14 @@ class Spider(SpiderUpdater, SpiderDownloader, SpiderExtractor, SpiderSaver):
                  verify=None, allow_redirects=True, proxies=None, wait=None, cert=None, max_retry=0,
                  not_retry_code=None, prepare=True):
 
+        if url and url.endswith('/'): url = url[:-1]
         super(Spider, self).__init__(url=url, body=body, header=header, cookie=cookie, overwrite=overwrite,
                                      prepare=prepare)
 
+        SpiderDownloader.__init__(self, timeout=timeout, stream=stream, verify=verify,
+                                  allow_redirects=allow_redirects, proxies=proxies, wait=wait, cert=cert,
+                                  max_retry=max_retry, not_retry_code=not_retry_code)
         if url:
-            SpiderDownloader.__init__(self, timeout=timeout, stream=stream, verify=verify,
-                                      allow_redirects=allow_redirects, proxies=proxies, wait=wait, cert=cert,
-                                      max_retry=max_retry, not_retry_code=not_retry_code)
-
             prepare_request = Request(url=self.url, data=self.body, headers=self.headers, cookies=self.cookies,
                                       method=self.method).prepare()
             prepare_request.priority = 0
