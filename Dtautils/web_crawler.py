@@ -120,11 +120,15 @@ class SpiderUpdater(object):
 
     @cookies.setter
     def cookies(self, cookie):
-        assert isinstance(cookie, (dict, str)), f'Cookie must be string or dict, get {cookie}'
+
         if isinstance(cookie, str):
             cookie = self._string_to_dict(cookie, tag='cookie')
-
-        self._spider['cookie'] = cookiejar_from_dict(cookie)
+        elif isinstance(cookie, dict):
+            self._spider['cookie'] = cookiejar_from_dict(cookie)
+        elif isinstance(cookie, requests.cookies.RequestsCookieJar):
+            self._spider['cookie'] = cookie
+        else:
+            print(f'Set Cookie Failed ... cookie must be str,dict or cookiejar get {type(cookie)}')
 
     @property
     def cookie_jar(self):
@@ -510,7 +514,7 @@ class SpiderDownloader(object):
 
     @property
     def data(self):
-        resp = self.request()
+        resp = self.send_request()
         try:
             resp_data = json.loads(resp.text)
         except:
@@ -545,7 +549,7 @@ class SpiderDownloader(object):
             else:
                 print('There are no valid agents.')
 
-    def request(self, **kwargs):
+    def send_request(self, **kwargs):
         prepared_request = self.prepared_request
 
         if prepared_request:
@@ -657,3 +661,20 @@ class Spider(SpiderUpdater, SpiderDownloader, SpiderExtractor, SpiderSaver):
         if isinstance(body, dict): self.post_type = 'form'
         self._spider['body'] = self._string_to_dict(body, tag='body')
         if self.prepare: self.prepared_request_queue.push(self.prepare_request(), 0)
+
+    def get(self, url=None, **kwargs):
+        if not url: url = self.url
+        return self.session.get(url, **kwargs)
+
+    def post(self, url=None, data=None, json=None, **kwargs):
+        if not url: url = self.url
+        if self.post_type == 'form':
+            data = self.body
+        else:
+            json = self.body
+        return self.session.post(url, data=data, json=json, **kwargs)
+
+    def send_request(self, **kwargs):
+        resp = SpiderDownloader.send_request(self, **kwargs)
+        self.cookies = self.session.cookies
+        return resp
