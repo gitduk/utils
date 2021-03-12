@@ -10,9 +10,9 @@ import requests
 from requests import Request, Session
 from requests.cookies import cookiejar_from_dict, create_cookie
 from Dtautils.tools import PriorityQueue
-from queue import Queue
 from Dtautils.data_factory import replace, search, re_search, re_findall
 from collections.abc import Iterable
+from Dtautils.settings import USER_AGENT_LIST
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -20,22 +20,18 @@ logger = logging.getLogger(__name__)
 
 
 class SpiderUpdater(object):
-    UA = {
-        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.88 Safari/537.36'
-    }
 
     def __init__(self, url=None, body=None, header=None, cookie=None, overwrite=True, prepare=True, post_type=None):
 
         self.method = 'POST' if body else 'GET'
         self.post_type = post_type
         if not post_type and body: self.init_post_type(body)
-        if not header: self.headers = self.init_header()
 
         self._spider = {
             'path': self._string_to_dict(url, tag='path'),
             'body': self._string_to_dict(body, tag='body'),
             'param': self._string_to_dict(url, tag='param'),
-            'header': {**self.UA, **self._string_to_dict(header, tag='header')},
+            'header': {**self.init_header(), **self._string_to_dict(header, tag='header')},
             'cookie': cookiejar_from_dict(self._string_to_dict(cookie, tag='cookie')),
         }
 
@@ -58,7 +54,7 @@ class SpiderUpdater(object):
         content_type = 'text/html; charset=UTF-8'
         if self.post_type == 'form': content_type = 'application/x-www-form-urlencoded; charset=UTF-8'
         if self.post_type == 'payload': content_type = 'application/json; charset=UTD-8'
-        return {**self.UA, 'Content-Type': content_type}
+        return {'User-Agent': random.choice(USER_AGENT_LIST), 'Content-Type': content_type}
 
     @property
     def url(self):
