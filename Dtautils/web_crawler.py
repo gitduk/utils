@@ -26,11 +26,10 @@ class SpiderUpdater(object):
 
     def __init__(self, url=None, body=None, header=None, cookie=None, overwrite=True, prepare=True, post_type=None):
 
-        if not header: header = self.UA
-
         self.method = 'POST' if body else 'GET'
         self.post_type = post_type
-        if not post_type and body: self.post_type = 'form' if '=' in body or isinstance(body, dict) else 'payload'
+        if not post_type and body: self.init_post_type(body)
+        if not header: self.headers = self.init_header()
 
         self._spider = {
             'path': self._string_to_dict(url, tag='path'),
@@ -43,6 +42,23 @@ class SpiderUpdater(object):
         self.overwrite = overwrite
         self.referer = None
         self.prepare = prepare
+
+    def init_post_type(self, body):
+        if isinstance(body, dict):
+            self.post_type = 'form'
+        else:
+            if '=' in body:
+                self.post_type = 'form'
+            elif ':' in body and body.startswith('{') and body.endswith('}'):
+                self.post_type = 'payload'
+            else:
+                print('Warning ... set post type failed')
+
+    def init_header(self):
+        content_type = 'text/html; charset=UTF-8'
+        if self.post_type == 'form': content_type = 'application/x-www-form-urlencoded; charset=UTF-8'
+        if self.post_type == 'payload': content_type = 'application/json; charset=UTD-8'
+        return {**self.UA, 'Content-Type': content_type}
 
     @property
     def url(self):
@@ -244,7 +260,9 @@ class SpiderUpdater(object):
     def _string_to_dict(self, string, tag=None):
         result = {}
         if not string: return result if tag != 'cookie' else requests.cookies.RequestsCookieJar()
-        if isinstance(string, dict): return string
+        if isinstance(string, dict):
+            if tag == 'body': self.post_type = 'form'
+            return string
 
         string = string.strip()
 
@@ -274,8 +292,10 @@ class SpiderUpdater(object):
 
         if tag == 'body':
             if '=' in string:
+                self.post_type = 'form'
                 result = {_.split('=', 1)[0]: _.split('=', 1)[1] for _ in string.split('&')}
-            elif ':' in string:
+            elif ':' in string and string.startswith('{') and string.endswith('}'):
+                self.post_type = 'payload'
                 if '\'' in string: string = string.replace('\'', '"')
                 result = json.loads(string)
 
@@ -654,7 +674,6 @@ class Spider(SpiderUpdater, SpiderDownloader, SpiderExtractor, SpiderSaver):
 
     @body.setter
     def body(self, body):
-        if isinstance(body, dict): self.post_type = 'form'
         self._spider['body'] = self._string_to_dict(body, tag='body')
         if self.prepare: self.prepared_request_queue.push(self.prepare_request(), 0)
 
@@ -664,13 +683,13 @@ class Spider(SpiderUpdater, SpiderDownloader, SpiderExtractor, SpiderSaver):
         self.cookies = self.session.cookies
         return resp
 
-    def post(self, url=None, data=None, json=None, **kwargs):
+    def post(self, url=None, body=None, json=None, **kwargs):
         if not url: url = self.url
         if self.post_type == 'form':
-            data = self.body
+            body = self.body
         else:
             json = self.body
-        resp = self.session.post(url, data=data, json=json, **kwargs)
+        resp = self.session.post(url, data=body, json=json, **kwargs)
         self.cookies = self.session.cookies
         return resp
 
