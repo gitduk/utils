@@ -497,6 +497,7 @@ class SpiderDownloader(object):
         self.proxies = proxies
         self.cert = cert
         self.wait = wait
+        self.pre_request = None
 
         self.max_retry = max_retry
         self.retry_code = not_retry_code or [404, 503]
@@ -504,23 +505,11 @@ class SpiderDownloader(object):
         self.start_time = time.time()
         self.running_time = None
 
-    @property
-    def prepared_request(self):
+    def pop_request(self):
         return self.prepared_request_queue.pop() if not self.prepared_request_queue.empty() else None
 
-    @prepared_request.setter
-    def prepared_request(self, req):
-        self.prepared_request_queue.push(req, 0)
-
-    @property
-    def data(self):
-        resp = self.send_request()
-        try:
-            resp_data = json.loads(resp.text)
-        except:
-            resp_data = resp.text
-
-        return resp_data
+    def push_request(self, req, priority=0):
+        self.prepared_request_queue.push(req, priority)
 
     @property
     def count(self):
@@ -550,7 +539,8 @@ class SpiderDownloader(object):
                 print('There are no valid agents.')
 
     def send_request(self, **kwargs):
-        prepared_request = self.prepared_request
+        prepared_request = self.pop_request()
+        if prepared_request is None: prepared_request = self.pre_request
 
         if prepared_request:
             time.sleep(self.wait or prepared_request.priority * 0.1)
@@ -561,6 +551,8 @@ class SpiderDownloader(object):
                                   'proxies': self.get_proxies(),
                                   'cert': self.cert, **kwargs}
             resp = self.session.send(prepared_request, **kwargs_for_session)
+            self.pre_request = prepared_request
+
             if resp.status_code in self.retry_code:
                 if self.max_retry and prepared_request.priority <= self.max_retry:
                     prepared_request.priority = prepared_request.priority + 1
@@ -611,22 +603,26 @@ class Spider(SpiderUpdater, SpiderDownloader, SpiderExtractor, SpiderSaver):
         if prepared_request: self.prepared_request_queue.push(prepared_request, 0)
 
     def find(self, key, data=None, target_type=None):
-        return SpiderExtractor.find(self, key, data=data or self.data, target_type=None)
+        if not data: data = self.send_request().text
+        return SpiderExtractor.find(self, key, data=data, target_type=None)
 
     def re_search(self, re_map, data=None, index=None):
-        return re_search(re_map=re_map, data=data or self.data, index=index)
+        if not data: data = self.send_request().text
+        return re_search(re_map=re_map, data=data, index=index)
 
     def re_findall(self, re_map, data=None):
-        return re_findall(re_map=re_map, data=data or self.data)
+        if not data: data = self.send_request().text
+        return re_findall(re_map=re_map, data=data)
 
     def css(self, *rules, data=None, extract=True, first=True, replace_rule=None, extract_key=False):
-        return SpiderExtractor.extractor(self, *rules, data=data or self.data, extract_method='css',
-                                         extract=extract, first=first, replace_map=replace_rule,
-                                         extract_key=extract_key)
+        if not data: data = self.send_request().text
+        return SpiderExtractor.extractor(self, *rules, data=data, extract_method='css', extract=extract, first=first,
+                                         replace_map=replace_rule, extract_key=extract_key)
 
     def xpath(self, *rules, data=None, replace_rule=None, extract_key=False):
-        return SpiderExtractor.extractor(self, *rules, data=data or self.data, extract_method='xpath',
-                                         replace_map=replace_rule, extract_key=extract_key)
+        if not data: data = self.send_request().text
+        return SpiderExtractor.extractor(self, *rules, data=data, extract_method='xpath', replace_map=replace_rule,
+                                         extract_key=extract_key)
 
     def init_saver(self, path=None, host=None, port=None, user=None, password=None, database=None, charset=None,
                    **kwargs):
@@ -664,7 +660,9 @@ class Spider(SpiderUpdater, SpiderDownloader, SpiderExtractor, SpiderSaver):
 
     def get(self, url=None, **kwargs):
         if not url: url = self.url
-        return self.session.get(url, **kwargs)
+        resp = self.session.get(url, **kwargs)
+        self.cookies = self.session.cookies
+        return resp
 
     def post(self, url=None, data=None, json=None, **kwargs):
         if not url: url = self.url
@@ -672,7 +670,9 @@ class Spider(SpiderUpdater, SpiderDownloader, SpiderExtractor, SpiderSaver):
             data = self.body
         else:
             json = self.body
-        return self.session.post(url, data=data, json=json, **kwargs)
+        resp = self.session.post(url, data=data, json=json, **kwargs)
+        self.cookies = self.session.cookies
+        return resp
 
     def send_request(self, **kwargs):
         resp = SpiderDownloader.send_request(self, **kwargs)
