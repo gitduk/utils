@@ -115,6 +115,7 @@ class SpiderUpdater(object):
 
     @body.setter
     def body(self, body):
+        if isinstance(body, dict) and not self.post_type: self.post_type = 'form'
         self._spider['body'] = self._string_to_dict(body, tag='body')
 
     @property
@@ -256,9 +257,7 @@ class SpiderUpdater(object):
     def _string_to_dict(self, string, tag=None):
         result = {}
         if not string: return result if tag != 'cookie' else requests.cookies.RequestsCookieJar()
-        if isinstance(string, dict):
-            if tag == 'body': self.post_type = 'form'
-            return string
+        if isinstance(string, dict): return string
 
         string = string.strip()
 
@@ -630,13 +629,13 @@ class Spider(SpiderUpdater, SpiderDownloader, SpiderExtractor, SpiderSaver):
         if not data: data = self.get_json_data()
         return SpiderExtractor.find(self, key, data=data, target_type=None)
 
-    def re_search(self, re_map, data=None, index=None):
+    def re_search(self, re_map, data=None, index=None, flags=None):
         if not data: data = self.get_data()
-        return re_search(re_map=re_map, data=data, index=index)
+        return re_search(re_map=re_map, data=data, index=index, flags=flags)
 
-    def re_findall(self, re_map, data=None):
+    def re_findall(self, re_map, data=None, flags=None):
         if not data: data = self.get_data()
-        return re_findall(re_map=re_map, data=data)
+        return re_findall(re_map=re_map, data=data, flags=flags)
 
     def css(self, *rules, data=None, extract=True, first=True, replace_rule=None, extract_key=False):
         if not data: data = self.get_data()
@@ -667,17 +666,26 @@ class Spider(SpiderUpdater, SpiderDownloader, SpiderExtractor, SpiderSaver):
         if self.prepare: self.prepared_request_queue.push(self.prepare_request(), 0)
 
     @property
-    def body(self):
+    def body_form(self):
         if not self.post_type: return ''
-
         body = self._spider.get('body')
-        if self.post_type == 'form':
-            return '&'.join(f'{key}={value}' for key, value in body.items())
-        else:
-            return json.dumps(body)
+        return '&'.join(f'{key}={value}' for key, value in body.items())
 
-    @body.setter
-    def body(self, body):
+    @body_form.setter
+    def body_form(self, body):
+        self.post_type = 'form'
+        self._spider['body'] = self._string_to_dict(body, tag='body')
+        if self.prepare: self.prepared_request_queue.push(self.prepare_request(), 0)
+
+    @property
+    def body_json(self):
+        if not self.post_type: return ''
+        body = self._spider.get('body')
+        return json.dumps(body)
+
+    @body_json.setter
+    def body_json(self, body):
+        self.post_type = 'payload'
         self._spider['body'] = self._string_to_dict(body, tag='body')
         if self.prepare: self.prepared_request_queue.push(self.prepare_request(), 0)
 
@@ -690,9 +698,9 @@ class Spider(SpiderUpdater, SpiderDownloader, SpiderExtractor, SpiderSaver):
     def post(self, url=None, body=None, json=None, **kwargs):
         if not url: url = self.url
         if self.post_type == 'form':
-            body = self.body
+            body = self.body_form if not body else body
         else:
-            json = self.body
+            json = self.body_dict if not json else json
         resp = self.session.post(url, data=body, json=json, **kwargs)
         self.cookies = self.session.cookies
         return resp

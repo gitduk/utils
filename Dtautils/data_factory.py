@@ -155,7 +155,7 @@ def re_search(re_map, data, flags=None, index=None):
     result = {key: re.search(pattern, data, flags=flags or 0) if isinstance(pattern, str) else pattern.search(data)
               for key, pattern in re_map.items()}
 
-    return {key: value.group(index or 0) for key, value in result.items()}
+    return {key: value.group(index or 0) if value else '' for key, value in result.items()}
 
 
 def re_findall(re_map, data, flags=None):
