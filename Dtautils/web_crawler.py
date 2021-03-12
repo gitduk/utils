@@ -275,7 +275,6 @@ class SpiderUpdater(object):
             result = {**result, 'path': path_list}
 
         if tag == 'param':
-            if self.method == 'POST': return result
 
             if '?' in string:
                 if '=' in string:
@@ -691,19 +690,19 @@ class Spider(SpiderUpdater, SpiderDownloader, SpiderExtractor, SpiderSaver):
         self._spider['body'] = self._string_to_dict(body, tag='body')
         if self.prepare: self.prepared_request_queue.push(self.prepare_request(), 0)
 
-    def get(self, url=None, **kwargs):
+    def get(self, url=None, headers=None, **kwargs):
         if not url: url = self.url
-        resp = self.session.get(url, **kwargs)
+        resp = self.session.get(url, headers=headers or self.headers, **kwargs)
         self.cookies = self.session.cookies
         return resp
 
-    def post(self, url=None, body=None, json=None, **kwargs):
+    def post(self, url=None, body=None, json=None, headers=None, **kwargs):
         if not url: url = self.url
         if self.post_type == 'form':
             body = self.body_form if not body else body
         else:
             json = self.body_dict if not json else json
-        resp = self.session.post(url, data=body, json=json, **kwargs)
+        resp = self.session.post(url, data=body, json=json, headers=headers or self.headers, **kwargs)
         self.cookies = self.session.cookies
         return resp
 
