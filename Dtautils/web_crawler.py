@@ -51,10 +51,12 @@ class SpiderUpdater(object):
                 print(f'Warning ... set post type failed, can not parse body type: {body}')
 
     def init_header(self):
-        content_type = 'text/html; charset=UTF-8'
-        if self.post_type == 'form': content_type = 'application/x-www-form-urlencoded; charset=UTF-8'
-        if self.post_type == 'payload': content_type = 'application/json; charset=UTD-8'
-        return {'User-Agent': random.choice(USER_AGENT_LIST), 'Content-Type': content_type}
+        if self.method == 'POST':
+            content_type = 'application/x-www-form-urlencoded; charset=UTF-8'
+            if self.post_type == 'payload': content_type = 'application/json; charset=UTF-8'
+            return {'User-Agent': random.choice(USER_AGENT_LIST), 'Content-Type': content_type}
+        else:
+            return {'User-Agent': random.choice(USER_AGENT_LIST)}
 
     @property
     def url(self):
