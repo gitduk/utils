@@ -48,7 +48,7 @@ class SpiderUpdater(object):
             elif ':' in body and body.startswith('{') and body.endswith('}'):
                 self.post_type = 'payload'
             else:
-                print('Warning ... set post type failed')
+                print(f'Warning ... set post type failed, can not parse body type: {body}')
 
     def init_header(self):
         content_type = 'text/html; charset=UTF-8'
@@ -554,6 +554,14 @@ class SpiderDownloader(object):
             else:
                 print('There are no valid agents.')
 
+    def get_data(self):
+        resp = self.send_request()
+        return resp.text if resp else ''
+
+    def get_json_data(self):
+        resp = self.send_request()
+        return json.loads(resp.text) if resp else {}
+
     def send_request(self, **kwargs):
         prepared_request = self.pop_request()
         if prepared_request is None: prepared_request = self.pre_request
@@ -619,7 +627,7 @@ class Spider(SpiderUpdater, SpiderDownloader, SpiderExtractor, SpiderSaver):
         if prepared_request: self.prepared_request_queue.push(prepared_request, 0)
 
     def find(self, key, data=None, target_type=None):
-        if not data: data = json.loads(self.get_data())
+        if not data: data = self.get_json_data()
         return SpiderExtractor.find(self, key, data=data, target_type=None)
 
     def re_search(self, re_map, data=None, index=None):
@@ -645,10 +653,6 @@ class Spider(SpiderUpdater, SpiderDownloader, SpiderExtractor, SpiderSaver):
         if not host and not path: path = './scraped.csv'
         SpiderSaver.__init__(self, path=path, host=host, port=port, user=user, password=password, database=database,
                              charset=charset, **kwargs)
-
-    def get_data(self):
-        resp = self.send_request()
-        return resp.text if resp else ''
 
     @property
     def url(self):
