@@ -619,24 +619,24 @@ class Spider(SpiderUpdater, SpiderDownloader, SpiderExtractor, SpiderSaver):
         if prepared_request: self.prepared_request_queue.push(prepared_request, 0)
 
     def find(self, key, data=None, target_type=None):
-        if not data: data = self.send_request().text
+        if not data: data = json.loads(self.get_data())
         return SpiderExtractor.find(self, key, data=data, target_type=None)
 
     def re_search(self, re_map, data=None, index=None):
-        if not data: data = self.send_request().text
+        if not data: data = self.get_data()
         return re_search(re_map=re_map, data=data, index=index)
 
     def re_findall(self, re_map, data=None):
-        if not data: data = self.send_request().text
+        if not data: data = self.get_data()
         return re_findall(re_map=re_map, data=data)
 
     def css(self, *rules, data=None, extract=True, first=True, replace_rule=None, extract_key=False):
-        if not data: data = self.send_request().text
+        if not data: data = self.get_data()
         return SpiderExtractor.extractor(self, *rules, data=data, extract_method='css', extract=extract, first=first,
                                          replace_map=replace_rule, extract_key=extract_key)
 
     def xpath(self, *rules, data=None, replace_rule=None, extract_key=False):
-        if not data: data = self.send_request().text
+        if not data: data = self.get_data()
         return SpiderExtractor.extractor(self, *rules, data=data, extract_method='xpath', replace_map=replace_rule,
                                          extract_key=extract_key)
 
@@ -645,6 +645,10 @@ class Spider(SpiderUpdater, SpiderDownloader, SpiderExtractor, SpiderSaver):
         if not host and not path: path = './scraped.csv'
         SpiderSaver.__init__(self, path=path, host=host, port=port, user=user, password=password, database=database,
                              charset=charset, **kwargs)
+
+    def get_data(self):
+        resp = self.send_request()
+        return resp.text if resp else ''
 
     @property
     def url(self):
