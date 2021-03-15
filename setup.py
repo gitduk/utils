@@ -18,7 +18,7 @@ URL = 'https://github.com/gitduk/utils'
 EMAIL = 'wdkany@gmail.com'
 AUTHOR = 'kaige'
 REQUIRES_PYTHON = '>=3.6.0'
-VERSION = '0.8.14'
+VERSION = '0.8.15'
 
 # What packages are required for this module to be executed?
 REQUIRED = [

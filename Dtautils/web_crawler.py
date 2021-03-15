@@ -595,6 +595,10 @@ class SpiderDownloader(object):
         else:
             print('No prepared request ... spider prepare request queue is empty!')
 
+    def save_html(self, path=None, data=None):
+        with open(path or './', 'w') as f:
+            f.write(data or self.get_data())
+
 
 class Spider(SpiderUpdater, SpiderDownloader, SpiderExtractor, SpiderSaver):
     def __init__(self, url=None, body=None, header=None, cookie=None, overwrite=True, post_type=None, timeout=10,
@@ -627,25 +631,22 @@ class Spider(SpiderUpdater, SpiderDownloader, SpiderExtractor, SpiderSaver):
         if prepared_request: self.prepared_request_queue.push(prepared_request, 0)
 
     def find(self, key, data=None, target_type=None):
-        if not data: data = self.get_json_data()
-        return SpiderExtractor.find(self, key, data=data, target_type=None)
+        return SpiderExtractor.find(self, key, data=data or self.get_json_data(), target_type=None)
 
     def re_search(self, re_map, data=None, index=None, flags=None):
-        if not data: data = self.get_data()
-        return re_search(re_map=re_map, data=data, index=index, flags=flags)
+        return re_search(re_map=re_map, data=data or self.get_data(), index=index, flags=flags)
 
     def re_findall(self, re_map, data=None, flags=None):
-        if not data: data = self.get_data()
-        return re_findall(re_map=re_map, data=data, flags=flags)
+        return re_findall(re_map=re_map, data=data or self.get_data(), flags=flags)
 
     def css(self, *rules, data=None, extract=True, first=True, replace_rule=None, extract_key=False):
-        if not data: data = self.get_data()
-        return SpiderExtractor.extractor(self, *rules, data=data, extract_method='css', extract=extract, first=first,
-                                         replace_map=replace_rule, extract_key=extract_key)
+        return SpiderExtractor.extractor(self, *rules, data=data or self.get_data(), extract_method='css',
+                                         extract=extract, first=first, replace_map=replace_rule,
+                                         extract_key=extract_key)
 
     def xpath(self, *rules, data=None, replace_rule=None, extract_key=False):
-        if not data: data = self.get_data()
-        return SpiderExtractor.extractor(self, *rules, data=data, extract_method='xpath', replace_map=replace_rule,
+        return SpiderExtractor.extractor(self, *rules, data=data or self.get_data(), extract_method='xpath',
+                                         replace_map=replace_rule,
                                          extract_key=extract_key)
 
     def init_saver(self, path=None, host=None, port=None, user=None, password=None, database=None, charset=None,
@@ -691,18 +692,16 @@ class Spider(SpiderUpdater, SpiderDownloader, SpiderExtractor, SpiderSaver):
         if self.prepare: self.prepared_request_queue.push(self.prepare_request(), 0)
 
     def get(self, url=None, headers=None, **kwargs):
-        if not url: url = self.url
-        resp = self.session.get(url, headers=headers or self.headers, **kwargs)
+        resp = self.session.get(url or self.url, headers=headers or self.headers, **kwargs)
         self.cookies = self.session.cookies
         return resp
 
     def post(self, url=None, body=None, json=None, headers=None, **kwargs):
-        if not url: url = self.url
         if self.post_type == 'form':
-            body = self.body_form if not body else body
+            body = body or self.body_form
         else:
-            json = self.body_dict if not json else json
-        resp = self.session.post(url, data=body, json=json, headers=headers or self.headers, **kwargs)
+            json = json or self.body_dict
+        resp = self.session.post(url or self.url, data=body, json=json, headers=headers or self.headers, **kwargs)
         self.cookies = self.session.cookies
         return resp
 

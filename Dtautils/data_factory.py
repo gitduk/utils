@@ -151,17 +151,64 @@ def flatten(data):
 
 
 def re_search(re_map, data, flags=None, index=None):
-    assert isinstance(re_map, dict), 'map must be a dict'
-    result = {key: re.search(pattern, data, flags=flags or 0) if isinstance(pattern, str) else pattern.search(data)
-              for key, pattern in re_map.items()}
+    s = False
+    if isinstance(re_map, str): re_map, s = {'_': re_map}, True
+    result = {}
+    for key, pattern in re_map.items():
+        if isinstance(pattern, str):
+            r = re.search(pattern, data, flags=flags or 0)
+            if not r and not flags:
+                r = re.search(pattern, data, flags=re.S)
+        elif isinstance(pattern, re.Pattern):
+            r = pattern.search(data)
+        elif isinstance(pattern, dict):
+            r = re_search(pattern, data, flags=flags, index=index)
+        else:
+            raise Exception(f'Type Error ... re_search not support {type(pattern)}')
 
-    return {key: value.group(index or 0) if value else '' for key, value in result.items()}
+        result[key] = r
+
+    result_g = _get_group_data(result, index=index)
+
+    return result_g if not s else result_g.get('_')
 
 
-def re_findall(re_map, data, flags=None):
-    assert isinstance(re_map, dict), 'map must be a dict'
-    return {key: re.findall(pattern, data, flags=flags or 0) if isinstance(pattern, str) else pattern.findall(data)
-            for key, pattern in re_map.items()}
+def _get_group_data(data, index=None):
+    result_g = {}
+    for k, v in data.items():
+        if v and isinstance(v, dict):
+            result_g[k] = _get_group_data(v)
+        elif isinstance(v, str):
+            result_g[k] = v
+        else:
+            try:
+                result_g[k] = v.group(index or 0) if v else ''
+            except IndexError:
+                result_g[k] = v.group()
+
+    return result_g
+
+
+def re_findall(re_map, data, flags=None, iter=False):
+    s = False
+    if isinstance(re_map, str): re_map, s = {'_': re_map}, True
+
+    result = {}
+    for key, pattern in re_map.items():
+        if isinstance(pattern, str):
+            r = re.finditer(pattern, data, flags=flags or 0) if iter else re.findall(pattern, data, flags=flags or 0)
+            if not r and not flags:
+                r = re.search(pattern, data, flags=re.S)
+        elif isinstance(pattern, re.Pattern):
+            r = pattern.finditer(data) if iter else pattern.findall(data)
+        elif isinstance(pattern, dict):
+            r = re_findall(pattern, data, flags=flags, iter=iter)
+        else:
+            raise Exception(f'Type Error ... re_search not support {type(pattern)}')
+
+        result[key] = r
+
+    return result if not s else result.get('_')
 
 
 def merge(*args, overwrite=False):
