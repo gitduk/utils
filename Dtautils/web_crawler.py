@@ -180,14 +180,6 @@ class SpiderUpdater(object):
 
         if prepare: return self.prepare_request()
 
-    def update_from_list(self, *args, tag=None, prepare=True):
-        assert len(args) == 2 and False not in (isinstance(_, list) for _ in args), f'Args must be list, get {args}'
-
-        for key, value in zip(args):
-            self._update(key, value, tag=tag)
-
-        if prepare: return self.prepare_request()
-
     def update_from_dict(self, *args, tag=None, prepare=True):
         if len(args) == 1:
             assert isinstance(args[0], dict), f'Args must be dict, get {args}'
@@ -352,10 +344,10 @@ class SpiderExtractor(object):
 
     @staticmethod
     def _get_result(tree, rule, method=None):
-        if '|' not in rule:
+        if ',' not in rule:
             result = tree.css(rule) if method == 'css' else tree.xpath(rule)
         else:
-            result = [tree.css(_) if method == 'css' else tree.xpath(rule) for _ in rule.split('|')]
+            result = [tree.css(_) if method == 'css' else tree.xpath(rule) for _ in rule.split(',')]
 
         return result
 
@@ -595,9 +587,17 @@ class SpiderDownloader(object):
         else:
             print('No prepared request ... spider prepare request queue is empty!')
 
-    def save_html(self, path=None, data=None):
-        with open(path or './', 'w') as f:
-            f.write(data or self.get_data())
+    @staticmethod
+    def save_text(self, data, path=None):
+        if isinstance(data, requests.Response): data = data.text
+        with open(path or './downloaded.html', 'w') as f:
+            f.write(data)
+
+    @staticmethod
+    def save_content(self, data, path):
+        if isinstance(data, requests.Response): data = data.content
+        with open(path, 'wb') as f:
+            f.write(data)
 
 
 class Spider(SpiderUpdater, SpiderDownloader, SpiderExtractor, SpiderSaver):
@@ -620,10 +620,6 @@ class Spider(SpiderUpdater, SpiderDownloader, SpiderExtractor, SpiderSaver):
 
     def update(self, *args, tag=None, prepare=True):
         prepared_request = SpiderUpdater.update(self, *args, tag=tag, prepare=prepare)
-        if prepared_request: self.prepared_request_queue.push(prepared_request, 0)
-
-    def update_from_list(self, *args, tag=None, prepare=True):
-        prepared_request = SpiderUpdater.update_from_list(self, *args, tag=tag, prepare=prepare)
         if prepared_request: self.prepared_request_queue.push(prepared_request, 0)
 
     def update_from_dict(self, *args, tag=None, prepare=True):
