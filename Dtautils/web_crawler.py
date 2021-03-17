@@ -21,7 +21,15 @@ logger = logging.getLogger(__name__)
 
 class SpiderUpdater(object):
 
-    def __init__(self, url=None, body=None, header=None, cookie=None, overwrite=True, prepare=True, post_type=None):
+    def __init__(
+            self,
+            url=None,
+            body=None,
+            header=None,
+            cookie=None,
+            overwrite=True,
+            prepare=True,
+            post_type=None):
 
         self.method = 'POST' if body else 'GET'
         self.post_type = post_type
@@ -353,8 +361,17 @@ class SpiderExtractor(object):
 
 
 class SpiderSaver(object):
-    def __init__(self, path=None, host=None, port=None, user=None, password=None, database=None, charset=None,
-                 **kwargs):
+    def __init__(
+            self,
+            path=None,
+            host=None,
+            port=None,
+            user=None,
+            password=None,
+            database=None,
+            charset=None,
+            **kwargs):
+
         assert path or host, 'Init Error ... path and host are None'
         self._save_path = path or ''
         self._file = None
@@ -491,8 +508,18 @@ class SpiderSaver(object):
 
 
 class SpiderDownloader(object):
-    def __init__(self, timeout=10, stream=False, verify=None, allow_redirects=True, proxies=None, wait=0, cert=None,
-                 max_retry=0, not_retry_code=None):
+    def __init__(
+            self,
+            timeout=10,
+            stream=False,
+            verify=None,
+            allow_redirects=True,
+            proxies=None,
+            wait=0,
+            cert=None,
+            max_retry=0,
+            not_retry_code=None):
+
         self.download_count = 0
         self.session = Session()
         self.prepared_request_queue = PriorityQueue()
@@ -587,9 +614,8 @@ class SpiderDownloader(object):
         else:
             print('No prepared request ... spider prepare request queue is empty!')
 
-    @staticmethod
-    def save_text(self, data, path=None):
-        if isinstance(data, requests.Response): data = data.text
+    def save_text(self, data=None, path=None):
+        if isinstance(data or self.get_data(), requests.Response): data = data.text
         with open(path or './downloaded.html', 'w') as f:
             f.write(data)
 
@@ -601,17 +627,47 @@ class SpiderDownloader(object):
 
 
 class Spider(SpiderUpdater, SpiderDownloader, SpiderExtractor, SpiderSaver):
-    def __init__(self, url=None, body=None, header=None, cookie=None, overwrite=True, post_type=None, timeout=10,
-                 stream=False, verify=None, allow_redirects=True, proxies=None, wait=None, cert=None, max_retry=0,
-                 not_retry_code=None, prepare=True):
+    def __init__(
+            self,
+            url=None,
+            body=None,
+            header=None,
+            cookie=None,
+            overwrite=True,
+            post_type=None,
+            timeout=10,
+            stream=False,
+            verify=None,
+            allow_redirects=True,
+            proxies=None,
+            wait=None,
+            cert=None,
+            max_retry=0,
+            not_retry_code=None,
+            prepare=True):
 
         if url and url.endswith('/'): url = url[:-1]
-        super(Spider, self).__init__(url=url, body=body, header=header, cookie=cookie, overwrite=overwrite,
-                                     prepare=prepare, post_type=post_type)
+        super(Spider, self).__init__(
+            url=url,
+            body=body,
+            header=header,
+            cookie=cookie,
+            overwrite=overwrite,
+            prepare=prepare,
+            post_type=post_type
+        )
 
-        SpiderDownloader.__init__(self, timeout=timeout, stream=stream, verify=verify,
-                                  allow_redirects=allow_redirects, proxies=proxies, wait=wait, cert=cert,
-                                  max_retry=max_retry, not_retry_code=not_retry_code)
+        SpiderDownloader.__init__(
+            self, timeout=timeout,
+            stream=stream,
+            verify=verify,
+            allow_redirects=allow_redirects,
+            proxies=proxies,
+            wait=wait,
+            cert=cert,
+            max_retry=max_retry,
+            not_retry_code=not_retry_code
+        )
         if url:
             prepare_request = Request(url=self.url, data=self.body, headers=self.headers, cookies=self.cookies,
                                       method=self.method).prepare()
