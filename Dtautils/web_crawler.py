@@ -7,12 +7,13 @@ import pymysql
 import urllib3
 from parsel import Selector as slctor
 import requests
-from requests import Request, Session
+from requests import Session
 from requests.cookies import cookiejar_from_dict, create_cookie
 from Dtautils.tools import PriorityQueue
 from Dtautils.data_factory import replace, search, re_search, re_findall
 from collections.abc import Iterable
 from Dtautils.settings import USER_AGENT_LIST
+from Dtautils.network.request import Request
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -33,13 +34,13 @@ class SpiderUpdater(object):
 
         self.method = 'POST' if body else 'GET'
         self.post_type = post_type
-        if not post_type and body: self.init_post_type(body)
+        if not post_type and body: self._init_post_type(body)
 
         self._spider = {
             'path': self._string_to_dict(url, tag='path'),
             'body': self._string_to_dict(body, tag='body'),
             'param': self._string_to_dict(url, tag='param'),
-            'header': {**self.init_header(), **self._string_to_dict(header, tag='header')},
+            'header': {**self._init_header(), **self._string_to_dict(header, tag='header')},
             'cookie': cookiejar_from_dict(self._string_to_dict(cookie, tag='cookie')),
         }
 
@@ -47,7 +48,7 @@ class SpiderUpdater(object):
         self.referer = None
         self.prepare = prepare
 
-    def init_post_type(self, body):
+    def _init_post_type(self, body):
         if isinstance(body, dict):
             self.post_type = 'form'
         else:
@@ -58,7 +59,7 @@ class SpiderUpdater(object):
             else:
                 print(f'Warning ... set post type failed, can not parse body type: {body}')
 
-    def init_header(self):
+    def _init_header(self):
         if self.method == 'POST':
             content_type = 'application/x-www-form-urlencoded; charset=UTF-8'
             if self.post_type == 'payload': content_type = 'application/json; charset=UTF-8'
@@ -208,7 +209,7 @@ class SpiderUpdater(object):
 
     def prepare_request(self):
         prepared_request = Request(url=self.url, data=self.body, headers=self.headers, cookies=self.cookies,
-                                   method=self.method).prepare()
+                                   method=self.method)
         prepared_request.priority = 0
 
         return prepared_request
@@ -221,17 +222,23 @@ class SpiderUpdater(object):
         assert tag in ('path', 'param', 'body', 'header', 'cookie'), f'Update failed ... no tag {key}:{value}'
 
         if tag != 'cookie':
-            if tag == 'path' and key.isdigit():
-                self._spider[tag]['path'].pop(int(key) - 1)
-                self._spider[tag]['path'].insert(int(key) - 1, value)
-            elif key.startswith('-') and key.strip('-').isdigit():
-                index = 0 - int(key.strip('-'))
-                self._spider[tag]['path'].pop(index)
-                insert_index = index + 1
-                if insert_index == 0:
-                    self._spider[tag]['path'].append(value)
+            if tag == 'path':
+                if key.isdigit():
+                    self._spider[tag][tag].pop(int(key) - 1)
+                    self._spider[tag][tag].insert(int(key) - 1, value)
+                elif key.startswith('-') and key.strip('-').isdigit():
+                    index = int(key)
+                    self._spider[tag][tag].pop(index)
+                    insert_index = index + 1
+                    if insert_index == 0:
+                        self._spider[tag]['path'].append(value)
+                    else:
+                        self._spider[tag]['path'].insert(index + 1, value)
                 else:
-                    self._spider[tag]['path'].insert(index + 1, value)
+                    p_list = self._spider['path'].pop('path')
+                    p_dict = {k: k for k in p_list}
+                    path_list = list({k: v if k != key else value for k, v in p_dict.items()}.values())
+                    self._spider['path'] = {**self._spider['path'], 'path': path_list}
             else:
                 self._spider[tag][key] = value
         else:
@@ -246,7 +253,7 @@ class SpiderUpdater(object):
         tag_name_list = [tag_name for tag_name, key_list in self._spider_keys.items() if key in key_list]
         assert len(tag_name_list) <= 1, f'Please set tag for update, there are many tags: {tag_name_list}'
 
-        if key.isdigit(): tag_name_list.append('path')
+        if key.strip('-').isdigit(): tag_name_list.append('path')
 
         tag_d = {
             'GET': 'param',
@@ -581,19 +588,16 @@ class SpiderDownloader(object):
         resp = self.send_request()
         return json.loads(resp.text) if resp else {}
 
-    def send_request(self, **kwargs):
+    def send_request(self):
         prepared_request = self.pop_request()
         if prepared_request is None: prepared_request = self.pre_request
 
         if prepared_request:
             time.sleep(self.wait or prepared_request.priority * 0.1)
-            kwargs_for_session = {'timeout': self.timeout,
-                                  'stream': self.stream,
-                                  'verify': self.verify,
-                                  'allow_redirects': self.allow_redirects,
-                                  'proxies': self.get_proxies(),
-                                  'cert': self.cert, **kwargs}
-            resp = self.session.send(prepared_request, **kwargs_for_session)
+
+            prepared_request.start()
+            resp = prepared_request.response
+
             self.pre_request = prepared_request
 
             if resp.status_code in self.retry_code:
@@ -670,7 +674,7 @@ class Spider(SpiderUpdater, SpiderDownloader, SpiderExtractor, SpiderSaver):
         )
         if url:
             prepare_request = Request(url=self.url, data=self.body, headers=self.headers, cookies=self.cookies,
-                                      method=self.method).prepare()
+                                      method=self.method)
             prepare_request.priority = 0
             self.prepared_request_queue.push(prepare_request, prepare_request.priority)
 
@@ -757,7 +761,7 @@ class Spider(SpiderUpdater, SpiderDownloader, SpiderExtractor, SpiderSaver):
         self.cookies = self.session.cookies
         return resp
 
-    def send_request(self, **kwargs):
-        resp = SpiderDownloader.send_request(self, **kwargs)
+    def send_request(self):
+        resp = SpiderDownloader.send_request(self)
         self.cookies = self.session.cookies
         return resp
